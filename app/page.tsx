@@ -55,10 +55,20 @@ export default function Dashboard() {
 
     (async () => {
       try {
-        const res = await fetch("/api/data");
-        const json = await res.json();
+        // Fetch both historical data and real-time count on initial load
+        const [historyRes, countRes] = await Promise.all([
+          fetch("/api/data"),
+          fetch("/api/count"),
+        ]);
+
+        const historyJson = await historyRes.json();
+        const countJson = await countRes.json();
+
         if (!cancelled) {
-          setData(json.history || []);
+          setData(historyJson.history || []);
+          if (countJson.count !== undefined) {
+            setRealtimeCount(countJson.count);
+          }
         }
       } catch (err) {
         console.error("Error fetching data:", err);

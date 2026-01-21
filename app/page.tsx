@@ -100,7 +100,7 @@ export default function Dashboard() {
             <div className="flex items-center gap-3">
               <Users className="w-8 h-8 text-indigo-600" />
               <h1 className="text-3xl font-bold text-gray-800">
-                Firebase User Tracker
+                SARAL User Tracker
               </h1>
             </div>
             <button

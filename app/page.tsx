@@ -100,6 +100,23 @@ export default function Dashboard() {
   const liveVsHistoricalDiff =
     liveCount !== null ? liveCount - lastHistoricalCount : 0;
 
+  // Calculate dynamic Y-axis domain for better visualization
+  const getYAxisDomain = () => {
+    if (data.length === 0) return [0, "auto"];
+
+    const counts = data.map((d) => d.count);
+    const minCount = Math.min(...counts);
+    const maxCount = Math.max(...counts);
+    const range = maxCount - minCount;
+
+    // Add 10% padding on both sides for better visibility
+    const padding = Math.max(range * 0.1, 1);
+    const domainMin = Math.floor(minCount - padding);
+    const domainMax = Math.ceil(maxCount + padding);
+
+    return [domainMin, domainMax];
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
       <div className="max-w-6xl mx-auto">
@@ -222,7 +239,11 @@ export default function Dashboard() {
                     return `${d.getMonth() + 1}/${d.getDate()}`;
                   }}
                 />
-                <YAxis tick={{ fontSize: 12 }} />
+                <YAxis
+                  tick={{ fontSize: 12 }}
+                  domain={getYAxisDomain()}
+                  tickFormatter={(value) => value.toLocaleString()}
+                />
                 <Tooltip
                   formatter={(value: number | undefined) => [
                     (value ?? 0).toLocaleString(),

@@ -187,6 +187,7 @@ export async function GET(request: Request) {
       {
         access: "public",
         addRandomSuffix: false,
+        allowOverwrite: true,
       },
     );
     console.log("Blob saved:", result.url);

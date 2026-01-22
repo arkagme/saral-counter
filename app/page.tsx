@@ -101,7 +101,7 @@ export default function Dashboard() {
     liveCount !== null ? liveCount - lastHistoricalCount : 0;
 
   // Calculate dynamic Y-axis domain for better visualization
-  const getYAxisDomain = () => {
+  const getYAxisDomain = (): [number, number] | [number, string] => {
     if (data.length === 0) return [0, "auto"];
 
     const counts = data.map((d) => d.count);

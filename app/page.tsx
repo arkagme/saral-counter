@@ -206,8 +206,8 @@ export default function Dashboard() {
                     Live vs Last Snapshot
                   </p>
                   <p className="text-4xl font-bold mt-2">
-                    {liveVsHistoricalDiff > 0 ? "+" : ""}
-                    {liveVsHistoricalDiff.toLocaleString()}
+                    {historicalChange > 0 ? "+" : ""}
+                    {historicalChange.toLocaleString()}
                   </p>
                   <p className="text-xs opacity-80 mt-1">
                     {historicalChange > 0 ? "+" : ""}

@@ -18,8 +18,15 @@ interface DataPoint {
   count: number;
 }
 
+interface DailyNewUsersPoint {
+  date: string;
+  newUsers: number;
+  totalCount: number;
+}
+
 export default function Dashboard() {
   const [data, setData] = useState<DataPoint[]>([]);
+  const [dailyNewUsers, setDailyNewUsers] = useState<DailyNewUsersPoint[]>([]);
   const [liveCount, setLiveCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -33,7 +40,21 @@ export default function Dashboard() {
         },
       });
       const json = await res.json();
-      setData(json.history || []);
+      const historyData = json.history || [];
+      setData(historyData);
+
+      // Calculate daily new users
+      const newUsersData = historyData.map(
+        (point: DataPoint, index: number) => ({
+          date: point.date,
+          newUsers:
+            index === 0
+              ? point.count
+              : point.count - (historyData[index - 1]?.count || 0),
+          totalCount: point.count,
+        }),
+      );
+      setDailyNewUsers(newUsersData);
     } catch (err) {
       console.error("Error fetching historical data:", err);
     }
@@ -75,7 +96,22 @@ export default function Dashboard() {
         const countJson = await countRes.json();
 
         if (!cancelled) {
-          setData(historyJson.history || []);
+          const historyData = historyJson.history || [];
+          setData(historyData);
+
+          // Calculate daily new users
+          const newUsersData = historyData.map(
+            (point: DataPoint, index: number) => ({
+              date: point.date,
+              newUsers:
+                index === 0
+                  ? point.count
+                  : point.count - (historyData[index - 1]?.count || 0),
+              totalCount: point.count,
+            }),
+          );
+          setDailyNewUsers(newUsersData);
+
           if (countJson.count !== undefined) {
             setLiveCount(countJson.count);
             setLastUpdated(new Date());
@@ -93,25 +129,30 @@ export default function Dashboard() {
 
   // Calculate stats
   const lastHistoricalCount = data.length > 0 ? data[data.length - 1].count : 0;
-  const historicalChange =
-    data.length > 1
-      ? data[data.length - 1].count - data[data.length - 2].count
+  const lastDailyNewUsers =
+    dailyNewUsers.length > 0
+      ? dailyNewUsers[dailyNewUsers.length - 1].newUsers
       : 0;
+  const yesterdayNewUsers =
+    dailyNewUsers.length > 1
+      ? dailyNewUsers[dailyNewUsers.length - 2].newUsers
+      : 0;
+  const newUsersChange = lastDailyNewUsers - yesterdayNewUsers;
   const liveVsHistoricalDiff =
     liveCount !== null ? liveCount - lastHistoricalCount : 0;
 
-  // Calculate dynamic Y-axis domain for better visualization
+  // Calculate dynamic Y-axis domain for better visualization (based on new users)
   const getYAxisDomain = (): [number, number] | [number, string] => {
-    if (data.length === 0) return [0, "auto"];
+    if (dailyNewUsers.length === 0) return [0, "auto"];
 
-    const counts = data.map((d) => d.count);
-    const minCount = Math.min(...counts);
-    const maxCount = Math.max(...counts);
+    const newUsersCounts = dailyNewUsers.map((d) => d.newUsers);
+    const minCount = Math.min(...newUsersCounts);
+    const maxCount = Math.max(...newUsersCounts);
     const range = maxCount - minCount;
 
     // Add 10% padding on both sides for better visibility
     const padding = Math.max(range * 0.1, 1);
-    const domainMin = Math.floor(minCount - padding);
+    const domainMin = Math.floor(Math.max(0, minCount - padding));
     const domainMax = Math.ceil(maxCount + padding);
 
     return [domainMin, domainMax];
@@ -175,7 +216,7 @@ export default function Dashboard() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-blue-100 text-sm uppercase tracking-wide">
-                    Last 24hr Snapshot
+                    Total Users (Last Update)
                   </p>
                   <p className="text-4xl font-bold mt-2">
                     {lastHistoricalCount.toLocaleString()}
@@ -190,12 +231,12 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Difference Card */}
+            {/* Daily New Users Card */}
             <div
               className={`rounded-lg p-6 text-white ${
-                liveVsHistoricalDiff > 0
+                newUsersChange > 0
                   ? "bg-gradient-to-br from-green-500 to-emerald-600"
-                  : liveVsHistoricalDiff < 0
+                  : newUsersChange < 0
                     ? "bg-gradient-to-br from-red-500 to-rose-600"
                     : "bg-gradient-to-br from-gray-500 to-slate-600"
               }`}
@@ -203,15 +244,14 @@ export default function Dashboard() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm uppercase tracking-wide opacity-90">
-                    Live vs Last Snapshot
+                    New Users Today
                   </p>
                   <p className="text-4xl font-bold mt-2">
-                    {historicalChange > 0 ? "+" : ""}
-                    {historicalChange.toLocaleString()}
+                    {lastDailyNewUsers.toLocaleString()}
                   </p>
                   <p className="text-xs opacity-80 mt-1">
-                    {historicalChange > 0 ? "+" : ""}
-                    {historicalChange.toLocaleString()} yesterday
+                    {newUsersChange > 0 ? "+" : ""}
+                    {newUsersChange.toLocaleString()} vs yesterday
                   </p>
                 </div>
                 <TrendingUp className="w-16 h-16 opacity-80" />
@@ -224,12 +264,14 @@ export default function Dashboard() {
           <div className="bg-white rounded-lg shadow-lg p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold text-gray-800">
-                Historical User Growth (24-Hour Snapshots)
+                Daily New Users Since Start (24-Hour Snapshots)
               </h2>
-              <p className="text-sm text-gray-500">{data.length} data points</p>
+              <p className="text-sm text-gray-500">
+                {dailyNewUsers.length} data points
+              </p>
             </div>
             <ResponsiveContainer width="100%" height={400}>
-              <LineChart data={data}>
+              <LineChart data={dailyNewUsers}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis
                   dataKey="date"
@@ -247,7 +289,7 @@ export default function Dashboard() {
                 <Tooltip
                   formatter={(value: number | undefined) => [
                     (value ?? 0).toLocaleString(),
-                    "Users",
+                    "New Users",
                   ]}
                   labelFormatter={(date) => {
                     const d = new Date(date);
@@ -257,12 +299,12 @@ export default function Dashboard() {
                 <Legend />
                 <Line
                   type="monotone"
-                  dataKey="count"
+                  dataKey="newUsers"
                   stroke="#4f46e5"
                   strokeWidth={3}
                   dot={{ fill: "#4f46e5", r: 4 }}
                   activeDot={{ r: 6 }}
-                  name="Daily User Count"
+                  name="New Users Per Day"
                 />
               </LineChart>
             </ResponsiveContainer>

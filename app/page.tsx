@@ -18,17 +18,11 @@ interface DataPoint {
   count: number;
 }
 
-interface DailyNewUsersPoint {
-  date: string;
-  newUsers: number;
-  totalCount: number;
-}
-
 export default function Dashboard() {
   const [data, setData] = useState<DataPoint[]>([]);
-  const [dailyNewUsers, setDailyNewUsers] = useState<DailyNewUsersPoint[]>([]);
   const [liveCount, setLiveCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
+  const [backfilling, setBackfilling] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const fetchHistoricalData = useCallback(async () => {
@@ -40,21 +34,7 @@ export default function Dashboard() {
         },
       });
       const json = await res.json();
-      const historyData = json.history || [];
-      setData(historyData);
-
-      // Calculate daily new users
-      const newUsersData = historyData.map(
-        (point: DataPoint, index: number) => ({
-          date: point.date,
-          newUsers:
-            index === 0
-              ? point.count
-              : point.count - (historyData[index - 1]?.count || 0),
-          totalCount: point.count,
-        }),
-      );
-      setDailyNewUsers(newUsersData);
+      setData(json.history || []);
     } catch (err) {
       console.error("Error fetching historical data:", err);
     }
@@ -76,6 +56,45 @@ export default function Dashboard() {
     }
   }, []);
 
+  const runBackfill = useCallback(async () => {
+    if (
+      !window.confirm(
+        "This will backfill all historical data from Firebase Auth. Continue?",
+      )
+    ) {
+      return;
+    }
+
+    setBackfilling(true);
+    try {
+      const secret = prompt("Enter CRON_SECRET:");
+      if (!secret) {
+        alert("Backfill cancelled - secret required");
+        return;
+      }
+
+      const res = await fetch(
+        `/api/backfill?secret=${encodeURIComponent(secret)}`,
+      );
+      const json = await res.json();
+
+      if (res.ok) {
+        alert(
+          `Backfill successful!\n\nStats:\n- Historical: ${json.stats.historicalDataPoints} points\n- Existing: ${json.stats.existingDataPoints} points\n- Final: ${json.stats.finalDataPoints} points\n- First Date: ${json.stats.firstDate}\n- Last Date: ${json.stats.lastDate}\n- Total Users: ${json.stats.totalUsers}`,
+        );
+        // Refresh the data
+        await fetchHistoricalData();
+      } else {
+        alert(`Backfill failed: ${json.error}`);
+      }
+    } catch (err) {
+      console.error("Error running backfill:", err);
+      alert("Backfill failed - check console for details");
+    } finally {
+      setBackfilling(false);
+    }
+  }, [fetchHistoricalData]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -96,22 +115,7 @@ export default function Dashboard() {
         const countJson = await countRes.json();
 
         if (!cancelled) {
-          const historyData = historyJson.history || [];
-          setData(historyData);
-
-          // Calculate daily new users
-          const newUsersData = historyData.map(
-            (point: DataPoint, index: number) => ({
-              date: point.date,
-              newUsers:
-                index === 0
-                  ? point.count
-                  : point.count - (historyData[index - 1]?.count || 0),
-              totalCount: point.count,
-            }),
-          );
-          setDailyNewUsers(newUsersData);
-
+          setData(historyJson.history || []);
           if (countJson.count !== undefined) {
             setLiveCount(countJson.count);
             setLastUpdated(new Date());
@@ -129,30 +133,23 @@ export default function Dashboard() {
 
   // Calculate stats
   const lastHistoricalCount = data.length > 0 ? data[data.length - 1].count : 0;
-  const lastDailyNewUsers =
-    dailyNewUsers.length > 0
-      ? dailyNewUsers[dailyNewUsers.length - 1].newUsers
+  const historicalChange =
+    data.length > 1
+      ? data[data.length - 1].count - data[data.length - 2].count
       : 0;
-  const yesterdayNewUsers =
-    dailyNewUsers.length > 1
-      ? dailyNewUsers[dailyNewUsers.length - 2].newUsers
-      : 0;
-  const newUsersChange = lastDailyNewUsers - yesterdayNewUsers;
-  const liveVsHistoricalDiff =
-    liveCount !== null ? liveCount - lastHistoricalCount : 0;
 
-  // Calculate dynamic Y-axis domain for better visualization (based on new users)
+  // Calculate dynamic Y-axis domain for better visualization
   const getYAxisDomain = (): [number, number] | [number, string] => {
-    if (dailyNewUsers.length === 0) return [0, "auto"];
+    if (data.length === 0) return [0, "auto"];
 
-    const newUsersCounts = dailyNewUsers.map((d) => d.newUsers);
-    const minCount = Math.min(...newUsersCounts);
-    const maxCount = Math.max(...newUsersCounts);
+    const counts = data.map((d) => d.count);
+    const minCount = Math.min(...counts);
+    const maxCount = Math.max(...counts);
     const range = maxCount - minCount;
 
     // Add 10% padding on both sides for better visibility
     const padding = Math.max(range * 0.1, 1);
-    const domainMin = Math.floor(Math.max(0, minCount - padding));
+    const domainMin = Math.floor(minCount - padding);
     const domainMax = Math.ceil(maxCount + padding);
 
     return [domainMin, domainMax];
@@ -170,6 +167,17 @@ export default function Dashboard() {
               </h1>
             </div>
             <div className="flex items-center gap-4">
+              <button
+                onClick={runBackfill}
+                disabled={backfilling}
+                className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-colors"
+                title="Backfill historical data from Firebase Auth"
+              >
+                <RefreshCw
+                  className={`w-4 h-4 ${backfilling ? "animate-spin" : ""}`}
+                />
+                {backfilling ? "Backfilling..." : "Backfill History"}
+              </button>
               <button
                 onClick={fetchHistoricalData}
                 className="flex items-center gap-2 bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors"
@@ -216,7 +224,7 @@ export default function Dashboard() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-blue-100 text-sm uppercase tracking-wide">
-                    Total Users (Last Update)
+                    Last 24hr Snapshot
                   </p>
                   <p className="text-4xl font-bold mt-2">
                     {lastHistoricalCount.toLocaleString()}
@@ -231,12 +239,12 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Daily New Users Card */}
+            {/* Change Card */}
             <div
               className={`rounded-lg p-6 text-white ${
-                newUsersChange > 0
+                historicalChange > 0
                   ? "bg-gradient-to-br from-green-500 to-emerald-600"
-                  : newUsersChange < 0
+                  : historicalChange < 0
                     ? "bg-gradient-to-br from-red-500 to-rose-600"
                     : "bg-gradient-to-br from-gray-500 to-slate-600"
               }`}
@@ -244,14 +252,19 @@ export default function Dashboard() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm uppercase tracking-wide opacity-90">
-                    New Users Today
+                    Change from Yesterday
                   </p>
                   <p className="text-4xl font-bold mt-2">
-                    {lastDailyNewUsers.toLocaleString()}
+                    {historicalChange > 0 ? "+" : ""}
+                    {historicalChange.toLocaleString()}
                   </p>
                   <p className="text-xs opacity-80 mt-1">
-                    {newUsersChange > 0 ? "+" : ""}
-                    {newUsersChange.toLocaleString()} vs yesterday
+                    {historicalChange > 0
+                      ? "📈"
+                      : historicalChange < 0
+                        ? "📉"
+                        : "➡️"}{" "}
+                    Daily growth
                   </p>
                 </div>
                 <TrendingUp className="w-16 h-16 opacity-80" />
@@ -264,14 +277,12 @@ export default function Dashboard() {
           <div className="bg-white rounded-lg shadow-lg p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold text-gray-800">
-                Daily New Users Since Start (24-Hour Snapshots)
+                Cumulative User Growth (24-Hour Snapshots)
               </h2>
-              <p className="text-sm text-gray-500">
-                {dailyNewUsers.length} data points
-              </p>
+              <p className="text-sm text-gray-500">{data.length} data points</p>
             </div>
             <ResponsiveContainer width="100%" height={400}>
-              <LineChart data={dailyNewUsers}>
+              <LineChart data={data}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis
                   dataKey="date"
@@ -289,7 +300,7 @@ export default function Dashboard() {
                 <Tooltip
                   formatter={(value: number | undefined) => [
                     (value ?? 0).toLocaleString(),
-                    "New Users",
+                    "Total Users",
                   ]}
                   labelFormatter={(date) => {
                     const d = new Date(date);
@@ -299,12 +310,12 @@ export default function Dashboard() {
                 <Legend />
                 <Line
                   type="monotone"
-                  dataKey="newUsers"
+                  dataKey="count"
                   stroke="#4f46e5"
                   strokeWidth={3}
                   dot={{ fill: "#4f46e5", r: 4 }}
                   activeDot={{ r: 6 }}
-                  name="New Users Per Day"
+                  name="Total User Count"
                 />
               </LineChart>
             </ResponsiveContainer>

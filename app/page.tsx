@@ -289,7 +289,7 @@ export default function Dashboard() {
                   tick={{ fontSize: 12 }}
                   tickFormatter={(date) => {
                     const d = new Date(date);
-                    return `${d.getMonth() + 1}/${d.getDate()}`;
+                    return `${d.getDate()}/${d.getMonth() + 1}`;
                   }}
                 />
                 <YAxis
@@ -298,6 +298,20 @@ export default function Dashboard() {
                   tickFormatter={(value) => value.toLocaleString()}
                 />
                 <Tooltip
+                  contentStyle={{
+                    backgroundColor: "white",
+                    border: "1px solid #ccc",
+                    borderRadius: "4px",
+                    padding: "8px",
+                  }}
+                  labelStyle={{
+                    color: "#000",
+                    fontWeight: "bold",
+                    marginBottom: "4px",
+                  }}
+                  itemStyle={{
+                    color: "#000",
+                  }}
                   formatter={(value: number | undefined) => [
                     (value ?? 0).toLocaleString(),
                     "Total Users",
@@ -312,9 +326,9 @@ export default function Dashboard() {
                   type="monotone"
                   dataKey="count"
                   stroke="#4f46e5"
-                  strokeWidth={3}
-                  dot={{ fill: "#4f46e5", r: 4 }}
-                  activeDot={{ r: 6 }}
+                  strokeWidth={2}
+                  dot={{ fill: "#4f46e5", r: 2 }}
+                  activeDot={{ r: 5 }}
                   name="Total User Count"
                 />
               </LineChart>

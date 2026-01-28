@@ -163,7 +163,7 @@ export default function Dashboard() {
             <div className="flex items-center gap-3">
               <Users className="w-8 h-8 text-indigo-600" />
               <h1 className="text-3xl font-bold text-gray-800">
-                User Growth Dashboard
+                SARAL User Growth Dashboard
               </h1>
             </div>
             <div className="flex items-center gap-4">
@@ -277,7 +277,7 @@ export default function Dashboard() {
           <div className="bg-white rounded-lg shadow-lg p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold text-gray-800">
-                Cumulative User Growth (24-Hour Snapshots)
+                SARAL Cumulative User Growth (24-Hour Snapshots)
               </h2>
               <p className="text-sm text-gray-500">{data.length} data points</p>
             </div>

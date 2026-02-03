@@ -357,7 +357,7 @@ export default function Dashboard() {
                   }}
                 />
                 <Legend />
-                <Line
+                {/* <Line
                   type="monotone"
                   dataKey="count"
                   stroke="#4f46e5"
@@ -365,7 +365,7 @@ export default function Dashboard() {
                   dot={{ fill: "#4f46e5", r: 2 }}
                   activeDot={{ r: 5 }}
                   //name="Total User Count"
-                />
+                /> */}
               </LineChart>
             </ResponsiveContainer>
           </div>

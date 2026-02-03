@@ -291,13 +291,13 @@ export default function Dashboard() {
                     const d = new Date(date);
                     return `${d.getDate()}/${d.getMonth() + 1}`;
                   }}
-                  label={{ value: "Dates", position: "insideBottom", offset: -5 }}
+                  label={{ value: "Dates", position: "insideBottom", offset: -5, fill: "#000" }}
                 />
                 <YAxis
                   tick={{ fontSize: 12 }}
                   domain={getYAxisDomain()}
                   tickFormatter={(value) => value.toLocaleString()}
-                  label={{ value: "User count", angle: -90, position: "insideLeft" }}
+                  label={{ value: "User count", angle: -90, position: "insideLeft", fill: "#000" }}
                 />
                 <Tooltip
                   contentStyle={{
@@ -331,7 +331,7 @@ export default function Dashboard() {
                   strokeWidth={2}
                   dot={{ fill: "#4f46e5", r: 2 }}
                   activeDot={{ r: 5 }}
-                  name="Total User Count"
+                  //name="Total User Count"
                 />
               </LineChart>
             </ResponsiveContainer>

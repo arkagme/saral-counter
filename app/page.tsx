@@ -291,11 +291,13 @@ export default function Dashboard() {
                     const d = new Date(date);
                     return `${d.getDate()}/${d.getMonth() + 1}`;
                   }}
+                  label={{ value: "Dates", position: "insideBottom", offset: -5 }}
                 />
                 <YAxis
                   tick={{ fontSize: 12 }}
                   domain={getYAxisDomain()}
                   tickFormatter={(value) => value.toLocaleString()}
+                  label={{ value: "User count", angle: -90, position: "insideLeft" }}
                 />
                 <Tooltip
                   contentStyle={{

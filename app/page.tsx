@@ -22,6 +22,7 @@ export default function Dashboard() {
   const [data, setData] = useState<DataPoint[]>([]);
   const [liveCount, setLiveCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [backfilling, setBackfilling] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
@@ -120,9 +121,13 @@ export default function Dashboard() {
             setLiveCount(countJson.count);
             setLastUpdated(new Date());
           }
+          setInitialLoading(false);
         }
       } catch (err) {
         console.error("Error fetching data:", err);
+        if (!cancelled) {
+          setInitialLoading(false);
+        }
       }
     })();
 
@@ -158,7 +163,35 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
       <div className="max-w-6xl mx-auto">
-        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+        {initialLoading ? (
+          // Loading Skeleton
+          <div className="space-y-6">
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-gray-200 rounded animate-pulse" />
+                  <div className="h-8 w-80 bg-gray-200 rounded animate-pulse" />
+                </div>
+                <div className="flex gap-4">
+                  <div className="h-10 w-40 bg-gray-200 rounded animate-pulse" />
+                  <div className="h-10 w-40 bg-gray-200 rounded animate-pulse" />
+                  <div className="h-10 w-40 bg-gray-200 rounded animate-pulse" />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="bg-gray-100 rounded-lg p-6 h-32 animate-pulse" />
+                ))}
+              </div>
+            </div>
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <div className="h-6 w-64 bg-gray-200 rounded mb-4 animate-pulse" />
+              <div className="h-96 bg-gray-100 rounded animate-pulse" />
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
               <Users className="w-8 h-8 text-indigo-600" />
@@ -336,6 +369,8 @@ export default function Dashboard() {
               </LineChart>
             </ResponsiveContainer>
           </div>
+        )}
+          </>
         )}
       </div>
     </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useTheme } from "next-themes";
 import {
   LineChart,
   Line,
@@ -13,7 +14,113 @@ import {
   Bar,
   Cell,
 } from "recharts";
-import { Users, TrendingUp, RefreshCw } from "lucide-react";
+import {
+  Users,
+  RefreshCw,
+  Sun,
+  Moon,
+  ArrowUpRight,
+  ArrowDownRight,
+  Minus,
+  Activity
+} from "lucide-react";
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
+
+// --- Utility Functions ---
+function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+
+// --- Components ---
+
+interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
+  compact?: boolean;
+}
+
+function Card({ className, compact, ...props }: CardProps) {
+  return (
+    <div
+      className={cn(
+        "rounded-xl border bg-[var(--background-secondary)] text-[var(--foreground)] shadow-sm transition-all duration-200 hover:shadow-md",
+        compact ? "p-4 gap-3" : "p-6 gap-4",
+        "border-[var(--border)]",
+        className
+      )}
+      {...props}
+    />
+  );
+}
+
+interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: "primary" | "secondary" | "ghost" | "outline";
+  size?: "sm" | "md" | "lg" | "icon";
+}
+
+function Button({
+  className,
+  variant = "primary",
+  size = "md",
+  ...props
+}: ButtonProps) {
+  const variants = {
+    primary:
+      "bg-[var(--accent-primary)] text-white hover:bg-[var(--accent-hover)] active:bg-[var(--accent-active)] border-transparent shadow-sm",
+    secondary:
+      "bg-[var(--background-tertiary)] text-[var(--foreground)] hover:bg-[var(--background-hover)] border-[var(--border)]",
+    ghost:
+      "bg-transparent text-[var(--text-secondary)] hover:bg-[var(--background-hover)] hover:text-[var(--foreground)]",
+    outline:
+      "bg-transparent border border-[var(--border)] text-[var(--foreground)] hover:bg-[var(--background-hover)]",
+  };
+
+  const sizes = {
+    sm: "h-8 px-3 text-xs rounded-md gap-1.5",
+    md: "h-10 px-4 py-2 text-sm rounded-lg gap-2",
+    lg: "h-12 px-6 text-base rounded-lg gap-2.5",
+    icon: "h-10 w-10 p-0 rounded-lg justify-center",
+  };
+
+  return (
+    <button
+      className={cn(
+        "inline-flex items-center font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)] disabled:pointer-events-none disabled:opacity-50",
+        variants[variant],
+        sizes[size],
+        className
+      )}
+      {...props}
+    />
+  );
+}
+
+function ThemeToggle() {
+  const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) {
+    return <Button variant="ghost" size="icon" disabled><Sun className="h-[1.2rem] w-[1.2rem]" /></Button>;
+  }
+
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+      title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+    >
+      <Sun className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+      <Moon className="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+      <span className="sr-only">Toggle theme</span>
+    </Button>
+  );
+}
+
+// --- Main Application ---
 
 interface DataPoint {
   date: string;
@@ -27,6 +134,18 @@ export default function Dashboard() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [backfilling, setBackfilling] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const { theme } = useTheme();
+
+  // Color constants based on CSS variables for Recharts
+  const chartColors = {
+    grid: theme === "dark" ? "#394150" : "#e0e0e0",
+    text: theme === "dark" ? "#a0a6b1" : "#757575",
+    primary: theme === "dark" ? "#4a9eff" : "#1a73e8",
+    success: theme === "dark" ? "#00d4aa" : "#00a67e",
+    error: theme === "dark" ? "#ff4d4f" : "#d32f2f",
+    tooltipBg: theme === "dark" ? "#1a1f2e" : "#ffffff",
+    tooltipBorder: theme === "dark" ? "#394150" : "#e0e0e0",
+  };
 
   const fetchHistoricalData = useCallback(async () => {
     try {
@@ -146,7 +265,7 @@ export default function Dashboard() {
       : 0;
 
   const NewChange =
-    data.length > 1 ? liveCount! -data[data.length - 1].count  : 0;
+    data.length > 1 && liveCount !== null ? liveCount - lastHistoricalCount : 0;
 
   // Calculate dynamic Y-axis domain for better visualization
   const getYAxisDomain = (): [number, number] | [number, string] => {
@@ -184,304 +303,325 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
-      <div className="max-w-6xl mx-auto">
-        {initialLoading ? (
-          // Loading Skeleton
-          <div className="space-y-6">
-            <div className="bg-white rounded-lg shadow-lg p-6">
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-gray-200 rounded animate-pulse" />
-                  <div className="h-8 w-80 bg-gray-200 rounded animate-pulse" />
-                </div>
-                <div className="flex gap-4">
-                  <div className="h-10 w-40 bg-gray-200 rounded animate-pulse" />
-                  <div className="h-10 w-40 bg-gray-200 rounded animate-pulse" />
-                  <div className="h-10 w-40 bg-gray-200 rounded animate-pulse" />
-                </div>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {[1, 2, 3].map((i) => (
-                  <div
-                    key={i}
-                    className="bg-gray-100 rounded-lg p-6 h-32 animate-pulse"
-                  />
-                ))}
-              </div>
+    <div className="min-h-screen bg-[var(--background)] transition-colors duration-300">
+      {/* Navigation / Header */}
+      <header className="sticky top-0 z-50 w-full border-b border-[var(--border)] bg-[var(--background-secondary)]/80 backdrop-blur-md">
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--accent-primary)] to-[var(--accent-active)] text-white shadow-lg">
+              <Users className="h-6 w-6" />
             </div>
-            <div className="bg-white rounded-lg shadow-lg p-6">
-              <div className="h-6 w-64 bg-gray-200 rounded mb-4 animate-pulse" />
-              <div className="h-96 bg-gray-100 rounded animate-pulse" />
+            <div>
+              <h1 className="text-xl font-bold tracking-tight text-[var(--foreground)]">
+                Saral Tracker
+              </h1>
+              <p className="text-xs font-medium text-[var(--text-secondary)]">User Growth Dashboard</p>
             </div>
           </div>
+          <div className="flex items-center gap-2 sm:gap-4">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={fetchHistoricalData}
+              className="hidden sm:inline-flex"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              <span className="ml-2">Refresh Data</span>
+            </Button>
+            <ThemeToggle />
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        {initialLoading ? (
+            // Loading Skeleton
+            <div className="animate-pulse space-y-8">
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="h-40 rounded-xl bg-[var(--background-tertiary)]" />
+                ))}
+              </div>
+              <div className="h-96 rounded-xl bg-[var(--background-tertiary)]" />
+              <div className="h-80 rounded-xl bg-[var(--background-tertiary)]" />
+            </div>
         ) : (
-          <>
-            <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-3">
-                  <Users className="w-8 h-8 text-indigo-600" />
-                  <h1 className="text-3xl font-bold text-gray-800">
-                    SARAL User Growth Dashboard
-                  </h1>
-                </div>
-                <div className="flex items-center gap-4">
-                  <button
+          <div className="space-y-8">
+            
+            {/* Action Bar (Mobile) */}
+             <div className="flex flex-wrap gap-3 sm:hidden">
+              <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={fetchHistoricalData}
+                  className="flex-1"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  <span className="ml-2">Refresh</span>
+                </Button>
+                 <Button
                     onClick={runBackfill}
                     disabled={backfilling}
-                    className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-colors"
-                    title="Backfill historical data from Firebase Auth"
+                    variant="secondary"
+                    size="sm"
+                    className="flex-1"
                   >
-                    <RefreshCw
-                      className={`w-4 h-4 ${backfilling ? "animate-spin" : ""}`}
-                    />
-                    {backfilling ? "Backfilling..." : "Backfill History"}
-                  </button>
-                  <button
-                    onClick={fetchHistoricalData}
-                    className="flex items-center gap-2 bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors"
-                  >
-                    <RefreshCw className="w-4 h-4" />
-                    Refresh History
-                  </button>
-                  <button
-                    onClick={fetchLiveCount}
-                    disabled={loading}
-                    className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
-                  >
-                    <RefreshCw
-                      className={`w-4 h-4 ${loading ? "animate-spin" : ""}`}
-                    />
-                    {loading ? "Fetching..." : "Get Live Count"}
-                  </button>
-                </div>
-              </div>
+                     <RefreshCw className={`mr-2 h-3.5 w-3.5 ${backfilling ? "animate-spin" : ""}`} />
+                     {backfilling ? "Backfilling..." : "Backfill"}
+                  </Button>
+             </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-                {/* Live User Count Card */}
-                <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg p-6 text-white">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-indigo-100 text-sm uppercase tracking-wide">
-                        Live User Count
-                      </p>
-                      <p className="text-4xl font-bold mt-2">
-                        {liveCount !== null ? liveCount.toLocaleString() : "—"}
-                      </p>
-                      {lastUpdated && (
-                        <p className="text-xs text-indigo-200 mt-1">
-                          Updated: {lastUpdated.toLocaleTimeString()}
-                        </p>
-                      )}
+
+            {/* Stats Grid */}
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {/* Live Count */}
+              <Card className="relative overflow-hidden border-none bg-gradient-to-br from-[var(--accent-primary)] to-[var(--accent-active)] text-white shadow-lg">
+                <div className="absolute right-0 top-0 -mt-4 -mr-4 h-32 w-32 rounded-full bg-white/10 blur-2xl" />
+                <div className="relative z-10 flex flex-col justify-between h-full">
+                  <div>
+                    <div className="flex items-center justify-between">
+                       <p className="text-sm font-medium text-blue-100">Live User Count</p>
+                       <Activity className="h-5 w-5 text-blue-100 opacity-80" />
                     </div>
-                    <Users className="w-16 h-16 text-indigo-200" />
+                    <p className="mt-2 text-4xl font-bold tracking-tight">
+                      {liveCount !== null ? liveCount.toLocaleString() : "—"}
+                    </p>
+                  </div>
+                  <div className="mt-4 flex items-center justify-between">
+                    {lastUpdated && (
+                      <span className="inline-flex items-center rounded-full bg-white/20 px-2 py-0.5 text-xs font-medium text-white backdrop-blur-sm">
+                        Updated {lastUpdated.toLocaleTimeString()}
+                      </span>
+                    )}
+                     <Button
+                      size="sm"
+                      onClick={fetchLiveCount}
+                      disabled={loading}
+                      className="bg-white/20 hover:bg-white/30 text-white border-0 h-7 px-2 text-xs"
+                    >
+                      <RefreshCw
+                        className={`h-3 w-3 ${loading ? "animate-spin" : ""}`}
+                      />
+                      <span className="ml-1 sr-only">{loading ? "Refreshing" : "Refresh"}</span>
+                    </Button>
                   </div>
                 </div>
+              </Card>
 
-                {/* Last 24hr Snapshot Card */}
-                <div className="bg-gradient-to-br from-blue-500 to-cyan-600 rounded-lg p-6 text-white">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-blue-100 text-sm uppercase tracking-wide">
-                        Last 24hr Snapshot
-                      </p>
-                      <p className="text-4xl font-bold mt-2">
-                        {lastHistoricalCount.toLocaleString()}
-                      </p>
-                      {data.length > 0 && (
-                        <p className="text-xs text-blue-200 mt-1">
-                          {data[data.length - 1].date}
-                        </p>
-                      )}
-                    </div>
-                    <TrendingUp className="w-16 h-16 text-blue-200" />
+              {/* 24hr Snapshot */}
+               <Card>
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-[var(--text-secondary)]">24h Snapshot</p>
+                    <p className="mt-2 text-4xl font-bold text-[var(--foreground)]">
+                       {lastHistoricalCount.toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-[var(--background-tertiary)] p-2">
+                     <Users className="h-6 w-6 text-[var(--accent-primary)]" />
                   </div>
                 </div>
+                 <div className="mt-4">
+                   {data.length > 0 && (
+                      <p className="text-xs text-[var(--text-tertiary)]">
+                        Recorded on {new Date(data[data.length - 1].date).toLocaleDateString()}
+                      </p>
+                   )}
+                 </div>
+              </Card>
 
-                {/* Change Card */}
-                <div
-                  className={`rounded-lg p-6 text-white ${
-                    historicalChange > 0
-                      ? "bg-gradient-to-br from-green-500 to-emerald-600"
-                      : historicalChange < 0
-                        ? "bg-gradient-to-br from-red-500 to-rose-600"
-                        : "bg-gradient-to-br from-gray-500 to-slate-600"
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm uppercase tracking-wide opacity-90">
-                        Change from Yesterday
-                      </p>
-                      <p className="text-4xl font-bold mt-2">
-                        {NewChange > 0 ? "+" : ""}
-                        {NewChange.toLocaleString()}
-                      </p>
-                      <p className="text-xs opacity-80 mt-1">
-                        {NewChange > 0 ? "📈" : NewChange < 0 ? "📉" : "➡️"}{" "}
-                        Daily growth
+              {/* Daily Growth */}
+              <Card>
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-[var(--text-secondary)]">Daily Growth</p>
+                    <div className="mt-2 flex items-baseline gap-2">
+                      <p className="text-4xl font-bold text-[var(--foreground)]">
+                         {NewChange > 0 ? "+" : ""}
+                         {NewChange.toLocaleString()}
                       </p>
                     </div>
-                    <TrendingUp className="w-16 h-16 opacity-80" />
+                  </div>
+                  <div className={cn(
+                    "rounded-lg p-2",
+                    NewChange > 0
+                      ? "bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400"
+                      : NewChange < 0
+                        ? "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400"
+                        : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
+                  )}>
+                     {NewChange > 0 ? <ArrowUpRight className="h-6 w-6" /> : NewChange < 0 ? <ArrowDownRight className="h-6 w-6" /> : <Minus className="h-6 w-6" />}
                   </div>
                 </div>
-              </div>
+                 <div className="mt-4 flex items-center gap-2">
+                   <div className={cn(
+                     "flex items-center text-xs font-medium",
+                      NewChange > 0 ? "text-[var(--success)]" : NewChange < 0 ? "text-[var(--error)]" : "text-[var(--text-tertiary)]"
+                   )}>
+                      {NewChange > 0 ? "Increasing trend" : NewChange < 0 ? "Decreasing trend" : "No change"}
+                   </div>
+                 </div>
+              </Card>
             </div>
 
+            {/* Backfill Actions (Desktop) */}
+            <div className="hidden sm:flex justify-end">
+               <Button
+                  onClick={runBackfill}
+                  disabled={backfilling}
+                  variant="secondary"
+                  size="sm"
+                >
+                   <RefreshCw className={`mr-2 h-4 w-4 ${backfilling ? "animate-spin" : ""}`} />
+                   {backfilling ? "Backfilling Historical Data..." : "Backfill History"}
+                </Button>
+            </div>
+
+            {/* Main Chart */}
             {data.length > 0 && (
-              <div className="bg-white rounded-lg shadow-lg p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-xl font-bold text-gray-800">
-                    SARAL Cumulative User Growth (24-Hour Snapshots)
-                  </h2>
-                  <p className="text-sm text-gray-500">
-                    {data.length} data points
-                  </p>
+              <Card className="flex flex-col">
+                <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <h2 className="text-lg font-semibold text-[var(--foreground)]">Cumulative User Growth</h2>
+                    <p className="text-sm text-[var(--text-secondary)]">Tracking total registered users over time</p>
+                  </div>
+                   <div className="inline-flex items-center rounded-lg border border-[var(--border)] bg-[var(--background-tertiary)] px-3 py-1 text-xs font-medium text-[var(--text-secondary)]">
+                     {data.length} data points
+                   </div>
                 </div>
-                <ResponsiveContainer width="100%" height={400}>
-                  <LineChart data={data}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis
-                      dataKey="date"
-                      tick={{ fontSize: 12 }}
-                      tickFormatter={(date) => {
-                        const d = new Date(date);
-                        return `${d.getDate()}/${d.getMonth() + 1}`;
-                      }}
-                      label={{
-                        value: "Dates",
-                        position: "insideBottom",
-                        offset: -5,
-                        fill: "#000",
-                      }}
-                    />
-                    <YAxis
-                      tick={{ fontSize: 12 }}
-                      domain={getYAxisDomain()}
-                      tickFormatter={(value) => value.toLocaleString()}
-                      label={{
-                        value: "User count",
-                        angle: -90,
-                        position: "insideLeft",
-                        fill: "#000",
-                      }}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: "white",
-                        border: "1px solid #ccc",
-                        borderRadius: "4px",
-                        padding: "8px",
-                      }}
-                      labelStyle={{
-                        color: "#000",
-                        fontWeight: "bold",
-                        marginBottom: "4px",
-                      }}
-                      itemStyle={{
-                        color: "#000",
-                      }}
-                      formatter={(value: number | undefined) => [
-                        (value ?? 0).toLocaleString(),
-                        "Total Users",
-                      ]}
-                      labelFormatter={(date) => {
-                        const d = new Date(date);
-                        return d.toLocaleDateString();
-                      }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="count"
-                      stroke="#4f46e5"
-                      strokeWidth={2}
-                      dot={{ fill: "#4f46e5", r: 2 }}
-                      activeDot={{ r: 5 }}
-                      //name="Total User Count"
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
+                <div className="h-[400px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartColors.grid} />
+                      <XAxis
+                        dataKey="date"
+                        tick={{ fontSize: 12, fill: chartColors.text }}
+                        axisLine={{ stroke: chartColors.grid }}
+                        tickLine={false}
+                        dy={10}
+                        tickFormatter={(date) => {
+                          const d = new Date(date);
+                          return `${d.getDate()}/${d.getMonth() + 1}`;
+                        }}
+                      />
+                      <YAxis
+                        tick={{ fontSize: 12, fill: chartColors.text }}
+                        axisLine={false}
+                        tickLine={false}
+                        domain={getYAxisDomain()}
+                        tickFormatter={(value) => value.toLocaleString()}
+                        width={60}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: chartColors.tooltipBg,
+                          borderColor: chartColors.tooltipBorder,
+                          borderRadius: "0.5rem",
+                          boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
+                          padding: "12px",
+                        }}
+                        labelStyle={{
+                          color: chartColors.text,
+                          fontWeight: 600,
+                          marginBottom: "8px",
+                          display: "block"
+                        }}
+                        itemStyle={{ color: chartColors.primary }}
+                        formatter={(value: number | string | Array<number | string> | undefined) => [
+                          (value !== undefined && typeof value === 'number' ? value.toLocaleString() : value),
+                          "Users",
+                        ]}
+                        labelFormatter={(date) => {
+                           const d = new Date(date);
+                           return d.toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
+                        }}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="count"
+                        stroke={chartColors.primary}
+                        strokeWidth={3}
+                        dot={{ fill: chartColors.tooltipBg, stroke: chartColors.primary, strokeWidth: 2, r: 4 }}
+                        activeDot={{ r: 6, strokeWidth: 0, fill: chartColors.primary }}
+                        animationDuration={1000}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </Card>
             )}
 
-            {/* Daily New Users Bar Chart (since start) */}
+            {/* Bar Chart */}
             {data.length > 0 && (
-              <div className="bg-white rounded-lg shadow-lg p-6 mt-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-xl font-bold text-gray-800">
-                    Daily New Users (since start)
-                  </h2>
-                  <p className="text-sm text-gray-500">
-                    {diffData.length} data points
-                  </p>
+              <Card>
+                 <div className="mb-6">
+                    <h2 className="text-lg font-semibold text-[var(--foreground)]">Daily New Users</h2>
+                    <p className="text-sm text-[var(--text-secondary)]">Net change in user count per day</p>
+                  </div>
+                <div className="h-[300px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={diffData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartColors.grid} />
+                       <XAxis
+                        dataKey="date"
+                        tick={{ fontSize: 12, fill: chartColors.text }}
+                        axisLine={{ stroke: chartColors.grid }}
+                        tickLine={false}
+                        dy={10}
+                        tickFormatter={(date) => {
+                          const d = new Date(date);
+                          return `${d.getDate()}/${d.getMonth() + 1}`;
+                        }}
+                      />
+                      <YAxis
+                        tick={{ fontSize: 12, fill: chartColors.text }}
+                        axisLine={false}
+                        tickLine={false}
+                        domain={getDiffYAxisDomain()}
+                        tickFormatter={(value) => value.toLocaleString()}
+                        width={60}
+                      />
+                      <Tooltip
+                         cursor={{ fill: theme === 'dark' ? '#ffffff10' : '#00000005' }}
+                         contentStyle={{
+                          backgroundColor: chartColors.tooltipBg,
+                          borderColor: chartColors.tooltipBorder,
+                          borderRadius: "0.5rem",
+                          boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
+                          padding: "12px",
+                        }}
+                        labelStyle={{
+                          color: chartColors.text,
+                          fontWeight: 600,
+                          marginBottom: "8px",
+                           display: "block"
+                        }}
+                        formatter={(value: number | string | Array<number | string> | undefined) => [
+                          (value !== undefined && typeof value === 'number' ? value.toLocaleString() : value),
+                          "New Users",
+                        ]}
+                         labelFormatter={(date) => {
+                           const d = new Date(date);
+                           return d.toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
+                        }}
+                      />
+                      <Bar dataKey="diff" radius={[4, 4, 0, 0]} maxBarSize={50}>
+                        {diffData.map((entry, index) => (
+                          <Cell
+                            key={`cell-${index}`}
+                            fill={entry.diff >= 0 ? chartColors.success : chartColors.error}
+                            fillOpacity={0.8}
+                          />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
                 </div>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={diffData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis
-                      dataKey="date"
-                      tick={{ fontSize: 12 }}
-                      tickFormatter={(date) => {
-                        const d = new Date(date);
-                        return `${d.getDate()}/${d.getMonth() + 1}`;
-                      }}
-                      label={{
-                        value: "Dates",
-                        position: "insideBottom",
-                        offset: -5,
-                        fill: "#000",
-                      }}
-                    />
-                    <YAxis
-                      tick={{ fontSize: 12 }}
-                      domain={getDiffYAxisDomain()}
-                      tickFormatter={(value) => value.toLocaleString()}
-                      label={{
-                        value: "New users",
-                        angle: -90,
-                        position: "insideLeft",
-                        fill: "#000",
-                      }}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: "white",
-                        border: "1px solid #ccc",
-                        borderRadius: "4px",
-                        padding: "8px",
-                      }}
-                      labelStyle={{
-                        color: "#000",
-                        fontWeight: "bold",
-                        marginBottom: "4px",
-                      }}
-                      itemStyle={{
-                        color: "#000",
-                      }}
-                      formatter={(value: number | undefined) => [
-                        (value ?? 0).toLocaleString(),
-                        "New Users",
-                      ]}
-                      labelFormatter={(date) => {
-                        const d = new Date(date);
-                        return d.toLocaleDateString();
-                      }}
-                    />
-                    <Bar dataKey="diff">
-                      {diffData.map((entry, index) => (
-                        <Cell
-                          key={`cell-${index}`}
-                          fill={entry.diff >= 0 ? "#10b981" : "#ef4444"}
-                        />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
+              </Card>
             )}
-          </>
+          </div>
         )}
-      </div>
+      </main>
     </div>
   );
 }

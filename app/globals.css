@@ -69,6 +69,25 @@
   --color-warning: var(--warning);
   --color-error: var(--error);
   --color-info: var(--info);
+
+  /* Explicit white definition for Tailwind v4 */
+  --color-white: #ffffff;
+  
+  /* Green palette for borders and indicators */
+  --color-green-50: #f0fdf4;
+  --color-green-200: #bbf7d0;
+  --color-green-600: #16a34a;
+  --color-green-900: #14532d;
+  
+  /* Gray palette for neutral elements */
+  --color-gray-100: #f3f4f6;
+  --color-gray-600: #4b5563;
+  --color-gray-800: #1f2937;
+  
+  /* Red palette for error states */
+  --color-red-100: #fee2e2;
+  --color-red-600: #dc2626;
+  --color-red-900: #7f1d1d;
 }
 
 body {

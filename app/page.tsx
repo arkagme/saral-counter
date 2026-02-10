@@ -442,16 +442,13 @@ export default function Dashboard() {
                       </p>
                     </div>
                   </div>
-                  <div className={cn(
-                    "rounded-lg p-2",
-                    NewChange > 0
-                      ? "bg-white ring-2 ring-green-100/50 shadow text-green-600 dark:bg-green-900/30 dark:text-green-400 dark:ring-0"
-                      : NewChange < 0
-                        ? "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400"
-                        : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
-                  )}>
-                     {NewChange > 0 ? <ArrowUpRight className="h-6 w-6" /> : NewChange < 0 ? <ArrowDownRight className="h-6 w-6" /> : <Minus className="h-6 w-6" />}
-                  </div>
+                  {NewChange > 0 ? (
+                    <ArrowUpRight className="h-8 w-8 text-green-600 dark:text-green-400" />
+                  ) : NewChange < 0 ? (
+                    <ArrowDownRight className="h-8 w-8 text-red-600 dark:text-red-400" />
+                  ) : (
+                    <Minus className="h-8 w-8 text-gray-600 dark:text-gray-400" />
+                  )}
                 </div>
                  <div className="mt-4 flex items-center gap-2">
                    <div className={cn(

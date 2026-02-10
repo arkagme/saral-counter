@@ -309,7 +309,9 @@ export default function Dashboard() {
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--accent-primary)] to-[var(--accent-active)] text-white shadow-lg">
-              <Users className="h-6 w-6" />
+              <span className="text-white dark:text-neutral-900 font-bold text-base">
+                SA
+              </span>
             </div>
             <div>
               <h1 className="text-xl font-bold tracking-tight text-[var(--foreground)]">

@@ -445,7 +445,7 @@ export default function Dashboard() {
                   <div className={cn(
                     "rounded-lg p-2",
                     NewChange > 0
-                      ? "bg-white text-green-600 dark:bg-green-900/30 dark:text-green-400"
+                      ? "bg-white border border-green-200 shadow-sm text-green-600 dark:bg-green-900/30 dark:text-green-400 dark:border-none"
                       : NewChange < 0
                         ? "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400"
                         : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"

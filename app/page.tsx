@@ -146,7 +146,7 @@ export default function Dashboard() {
       : 0;
 
   const NewChange =
-    data.length > 1 ? data[data.length - 1].count - liveCount! : 0;
+    data.length > 1 ? liveCount! -data[data.length - 1].count  : 0;
 
   // Calculate dynamic Y-axis domain for better visualization
   const getYAxisDomain = (): [number, number] | [number, string] => {

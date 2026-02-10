@@ -556,8 +556,8 @@ export default function Dashboard() {
                         dataKey="count"
                         stroke={chartColors.primary}
                         strokeWidth={3}
-                        dot={{ fill: chartColors.tooltipBg, stroke: chartColors.primary, strokeWidth: 2, r: 4 }}
-                        activeDot={{ r: 6, strokeWidth: 0, fill: chartColors.primary }}
+                        dot={{ fill: chartColors.primary, strokeWidth: 0, r: 4 }}
+                        activeDot={{ r: 6, stroke: chartColors.primary, strokeWidth: 2, fill: chartColors.tooltipBg }}
                         animationDuration={1000}
                       />
                     </LineChart>

@@ -555,9 +555,9 @@ export default function Dashboard() {
                         type="monotone"
                         dataKey="count"
                         stroke={chartColors.primary}
-                        strokeWidth={3}
-                        dot={{ fill: chartColors.primary, strokeWidth: 0, r: 4 }}
-                        activeDot={{ r: 6, stroke: chartColors.primary, strokeWidth: 2, fill: chartColors.tooltipBg }}
+                        strokeWidth={1.5}
+                        dot={{ fill: chartColors.primary, strokeWidth: 0, r: 3 }}
+                        activeDot={{ r: 5, stroke: chartColors.primary, strokeWidth: 2, fill: chartColors.tooltipBg }}
                         animationDuration={1000}
                       />
                     </LineChart>

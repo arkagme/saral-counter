@@ -278,7 +278,7 @@ export default function Dashboard() {
 
     // Add 10% padding on both sides for better visibility
     const padding = Math.max(range * 0.1, 1);
-    const domainMin = Math.floor(minCount - padding);
+    const domainMin = Math.max(0, Math.floor(minCount - padding)); // Ensure >= 0
     const domainMax = Math.ceil(maxCount + padding);
 
     return [domainMin, domainMax];
@@ -297,7 +297,7 @@ export default function Dashboard() {
     const max = Math.max(...diffs);
     const range = max - min;
     const padding = Math.max(range * 0.1, 1);
-    const domainMin = Math.floor(min - padding);
+    const domainMin = Math.max(0, Math.floor(min - padding)); // Ensure >= 0
     const domainMax = Math.ceil(max + padding);
     return [domainMin, domainMax];
   };
@@ -491,7 +491,7 @@ export default function Dashboard() {
                 </div>
                 <div className="h-[400px] w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                    <LineChart data={data} margin={{ top: 10, right: 30, left: 20, bottom: 20 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartColors.grid} />
                       <XAxis
                         dataKey="date"
@@ -503,6 +503,13 @@ export default function Dashboard() {
                           const d = new Date(date);
                           return `${d.getDate()}/${d.getMonth() + 1}`;
                         }}
+                        label={{
+                          value: 'Dates',
+                          position: 'insideBottom',
+                          offset: -10,
+                          fill: chartColors.text,
+                          style: { fontSize: 12, fontWeight: 500 }
+                        }}
                       />
                       <YAxis
                         tick={{ fontSize: 12, fill: chartColors.text }}
@@ -511,6 +518,14 @@ export default function Dashboard() {
                         domain={getYAxisDomain()}
                         tickFormatter={(value) => value.toLocaleString()}
                         width={60}
+                        label={{
+                          value: 'Total Users',
+                          angle: -90,
+                          position: 'insideLeft',
+                          offset: -10, // adjusted offset
+                          fill: chartColors.text,
+                          style: { fontSize: 12, fontWeight: 500 }
+                        }}
                       />
                       <Tooltip
                         contentStyle={{
@@ -560,7 +575,7 @@ export default function Dashboard() {
                   </div>
                 <div className="h-[300px] w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={diffData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                    <BarChart data={diffData} margin={{ top: 10, right: 30, left: 20, bottom: 20 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartColors.grid} />
                        <XAxis
                         dataKey="date"
@@ -572,6 +587,13 @@ export default function Dashboard() {
                           const d = new Date(date);
                           return `${d.getDate()}/${d.getMonth() + 1}`;
                         }}
+                        label={{
+                          value: 'Dates',
+                          position: 'insideBottom',
+                          offset: -10,
+                          fill: chartColors.text,
+                          style: { fontSize: 12, fontWeight: 500 }
+                        }}
                       />
                       <YAxis
                         tick={{ fontSize: 12, fill: chartColors.text }}
@@ -580,6 +602,14 @@ export default function Dashboard() {
                         domain={getDiffYAxisDomain()}
                         tickFormatter={(value) => value.toLocaleString()}
                         width={60}
+                         label={{
+                          value: 'New Users registered',
+                          angle: -90,
+                          position: 'insideLeft',
+                          offset: -10, // adjusted offset
+                          fill: chartColors.text,
+                           style: { fontSize: 12, fontWeight: 500 }
+                        }}
                       />
                       <Tooltip
                          cursor={{ fill: theme === 'dark' ? '#ffffff10' : '#00000005' }}

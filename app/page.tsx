@@ -693,7 +693,7 @@ export default function Dashboard() {
                 <div>
                   <h2 className="text-lg font-semibold text-[var(--foreground)]">Returning Users by Engagement</h2>
                   <p className="text-sm text-[var(--text-secondary)]">
-                    Users who came back after sign-up, sorted by days active (lastSignIn − creationDate)
+                    Users who came back after sign-up, sorted by days active
                   </p>
                 </div>
                 <div className="flex items-center gap-3">

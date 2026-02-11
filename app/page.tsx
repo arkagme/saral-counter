@@ -13,6 +13,7 @@ import {
   BarChart,
   Bar,
   Cell,
+  LabelList,
 } from "recharts";
 import {
   Users,
@@ -22,7 +23,8 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Minus,
-  Activity
+  Activity,
+  UserCheck,
 } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -127,6 +129,20 @@ interface DataPoint {
   count: number;
 }
 
+interface ReturningUser {
+  email: string;
+  createdAt: string;
+  lastSignIn: string;
+  daysActive: number;
+}
+
+interface ReturningUsersData {
+  returningUsers: ReturningUser[];
+  totalUsers: number;
+  returningCount: number;
+  returningPercentage: string;
+}
+
 export default function Dashboard() {
   const [data, setData] = useState<DataPoint[]>([]);
   const [liveCount, setLiveCount] = useState<number | null>(null);
@@ -134,6 +150,8 @@ export default function Dashboard() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [backfilling, setBackfilling] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [returningData, setReturningData] = useState<ReturningUsersData | null>(null);
+  const [returningLoading, setReturningLoading] = useState(false);
   const { theme } = useTheme();
 
   // Color constants based on CSS variables for Recharts
@@ -217,6 +235,21 @@ export default function Dashboard() {
     }
   }, [fetchHistoricalData]);
 
+  const fetchReturningUsers = useCallback(async () => {
+    setReturningLoading(true);
+    try {
+      const res = await fetch("/api/returning-users");
+      const json = await res.json();
+      if (!json.error) {
+        setReturningData(json);
+      }
+    } catch (err) {
+      console.error("Error fetching returning users:", err);
+    } finally {
+      setReturningLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -256,6 +289,11 @@ export default function Dashboard() {
       cancelled = true;
     };
   }, []);
+
+  // Fetch returning users on mount
+  useEffect(() => {
+    fetchReturningUsers();
+  }, [fetchReturningUsers]);
 
   // Calculate stats
   const lastHistoricalCount = data.length > 0 ? data[data.length - 1].count : 0;
@@ -648,6 +686,126 @@ export default function Dashboard() {
                 </div>
               </Card>
             )}
+
+            {/* Returning Users Section */}
+            <Card className="flex flex-col">
+              <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-semibold text-[var(--foreground)]">Returning Users by Engagement</h2>
+                  <p className="text-sm text-[var(--text-secondary)]">
+                    Users who came back after sign-up, sorted by days active (lastSignIn − creationDate)
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  {returningData && (
+                    <div className="inline-flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--background-tertiary)] px-3 py-1 text-xs font-medium text-[var(--text-secondary)]">
+                      <UserCheck className="h-3.5 w-3.5 text-[var(--success)]" />
+                      {returningData.returningCount} / {returningData.totalUsers} users ({returningData.returningPercentage}%)
+                    </div>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={fetchReturningUsers}
+                    disabled={returningLoading}
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${returningLoading ? "animate-spin" : ""}`} />
+                    <span className="ml-1">Refresh</span>
+                  </Button>
+                </div>
+              </div>
+
+              {returningLoading && !returningData ? (
+                <div className="flex items-center justify-center h-40">
+                  <RefreshCw className="h-6 w-6 animate-spin text-[var(--accent-primary)]" />
+                </div>
+              ) : returningData && returningData.returningUsers.length > 0 ? (
+                <div
+                  className="w-full overflow-y-auto"
+                  style={{ height: Math.min(returningData.returningUsers.length * 36 + 60, 600) }}
+                >
+                  <ResponsiveContainer width="100%" height={returningData.returningUsers.length * 36 + 60}>
+                    <BarChart
+                      data={returningData.returningUsers}
+                      layout="vertical"
+                      margin={{ top: 10, right: 80, left: 10, bottom: 20 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={chartColors.grid} />
+                      <XAxis
+                        type="number"
+                        tick={{ fontSize: 12, fill: chartColors.text }}
+                        axisLine={{ stroke: chartColors.grid }}
+                        tickLine={false}
+                        label={{
+                          value: 'Days Active',
+                          position: 'insideBottom',
+                          offset: -10,
+                          fill: chartColors.text,
+                          style: { fontSize: 12, fontWeight: 500 },
+                        }}
+                      />
+                      <YAxis
+                        dataKey="email"
+                        type="category"
+                        tick={{ fontSize: 11, fill: chartColors.text }}
+                        axisLine={false}
+                        tickLine={false}
+                        width={200}
+                        tickFormatter={(email: string) =>
+                          email.length > 28 ? email.slice(0, 25) + "..." : email
+                        }
+                      />
+                      <Tooltip
+                        cursor={{ fill: theme === 'dark' ? '#ffffff10' : '#00000005' }}
+                        contentStyle={{
+                          backgroundColor: chartColors.tooltipBg,
+                          borderColor: chartColors.tooltipBorder,
+                          borderRadius: "0.5rem",
+                          boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
+                          padding: "12px",
+                        }}
+                        labelStyle={{
+                          color: chartColors.text,
+                          fontWeight: 600,
+                          marginBottom: "8px",
+                          display: "block",
+                        }}
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        formatter={(value: any, _name: any, props: any) => {
+                          const user = props.payload as ReturningUser;
+                          return [
+                            `${value} days (Signed up: ${user.createdAt}, Last seen: ${user.lastSignIn})`,
+                            "Engagement",
+                          ];
+                        }}
+                      />
+                      <Bar dataKey="daysActive" radius={[0, 4, 4, 0]} maxBarSize={28}>
+                        {returningData.returningUsers.map((_entry, index) => {
+                          const ratio = 1 - index / Math.max(returningData.returningUsers.length - 1, 1);
+                          const color =
+                            theme === "dark"
+                              ? `hsl(${160 + ratio * 40}, ${50 + ratio * 30}%, ${40 + ratio * 20}%)`
+                              : `hsl(${160 + ratio * 40}, ${50 + ratio * 25}%, ${30 + ratio * 15}%)`;
+                          return <Cell key={`ret-${index}`} fill={color} fillOpacity={0.85} />;
+                        })}
+                        <LabelList
+                          dataKey="daysActive"
+                          position="right"
+                          style={{ fontSize: 11, fill: chartColors.text, fontWeight: 500 }}
+                          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                          formatter={(value: any) => `${value}d`}
+                        />
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center h-40 text-[var(--text-tertiary)]">
+                  <UserCheck className="h-8 w-8 mb-2 opacity-50" />
+                  <p className="text-sm">No returning users found</p>
+                </div>
+              )}
+            </Card>
           </div>
         )}
       </main>

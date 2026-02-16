@@ -843,7 +843,7 @@ export default function Dashboard() {
             )}
 
             {/* Bar Chart */}
-            {data.length > 0 && isAuthenticated && (
+            {data.length > 0 && (
               <Card>
                 <div className="mb-6">
                   <h2 className="text-lg font-semibold text-[var(--foreground)]">

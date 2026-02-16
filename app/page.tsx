@@ -827,21 +827,6 @@ export default function Dashboard() {
               </Card>
             )}
 
-            {/* More Details Button (shown when not authenticated) */}
-            {!isAuthenticated && (
-              <div className="flex justify-center py-8">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowAuthModal(true)}
-                  className="group text-[var(--text-tertiary)] hover:text-[var(--foreground)] transition-all duration-200"
-                >
-                  <Lock className="h-3.5 w-3.5 opacity-60 group-hover:opacity-100" />
-                  <span className="text-xs font-medium">More Details</span>
-                </Button>
-              </div>
-            )}
-
             {/* Bar Chart */}
             {data.length > 0 && (
               <Card>
@@ -954,6 +939,21 @@ export default function Dashboard() {
                   </ResponsiveContainer>
                 </div>
               </Card>
+            )}
+
+            {/* More Details Button (shown when not authenticated) */}
+            {!isAuthenticated && (
+              <div className="flex justify-center py-8">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowAuthModal(true)}
+                  className="group text-[var(--text-tertiary)] hover:text-[var(--foreground)] transition-all duration-200"
+                >
+                  <Lock className="h-3.5 w-3.5 opacity-60 group-hover:opacity-100" />
+                  <span className="text-xs font-medium">More Details</span>
+                </Button>
+              </div>
             )}
 
             {/* Returning Users Section - Protected */}

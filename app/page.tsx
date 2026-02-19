@@ -1347,12 +1347,12 @@ export default function Dashboard() {
                           <PieChart>
                             <Pie
                               data={[
-                                {
-                                  name: "Papers",
-                                  value: platformStats.papers,
-                                  fill:
-                                    theme === "dark" ? "#5b9fff" : "#0288d1",
-                                },
+                                // {
+                                //   name: "Papers",
+                                //   value: platformStats.papers,
+                                //   fill:
+                                //     theme === "dark" ? "#5b9fff" : "#0288d1",
+                                // },
                                 {
                                   name: "Videos",
                                   value: platformStats.videos,

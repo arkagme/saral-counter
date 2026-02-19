@@ -1154,9 +1154,12 @@ export default function Dashboard() {
                     <RefreshCw className="h-6 w-6 animate-spin text-[var(--accent-primary)]" />
                   </div>
                 ) : returningData && returningData.returningUsers.length > 0 ? (
-                  <div className="w-full overflow-x-auto">
+                  <div
+                    className="w-full overflow-x-auto overflow-y-auto"
+                    style={{ maxHeight: 480 }}
+                  >
                     <table className="w-full text-sm">
-                      <thead>
+                      <thead className="sticky top-0 z-10 bg-[var(--background-secondary)]">
                         <tr className="border-b border-[var(--border)] text-left">
                           <th className="pb-3 pr-4 font-medium text-[var(--text-secondary)] w-8">
                             #
@@ -1176,42 +1179,44 @@ export default function Dashboard() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[var(--border)]">
-                        {returningData.returningUsers.map((user, index) => (
-                          <tr
-                            key={user.email}
-                            className="group hover:bg-[var(--background-hover)] transition-colors"
-                          >
-                            <td className="py-2.5 pr-4 text-xs text-[var(--text-tertiary)]">
-                              {index + 1}
-                            </td>
-                            <td className="py-2.5 pr-4 font-mono text-xs text-[var(--foreground)] max-w-[240px] truncate">
-                              {user.email}
-                            </td>
-                            <td className="py-2.5 pr-4 text-xs text-[var(--text-secondary)] whitespace-nowrap">
-                              {user.firstLogin}
-                            </td>
-                            <td className="py-2.5 pr-4 text-xs text-[var(--text-secondary)] whitespace-nowrap">
-                              {user.lastLogin}
-                            </td>
-                            <td className="py-2.5 text-right">
-                              <span
-                                className="inline-flex items-center justify-center rounded-full px-2.5 py-0.5 text-xs font-semibold"
-                                style={{
-                                  background:
-                                    theme === "dark"
-                                      ? `hsl(${160 + Math.min(user.loginSpanDays / 5, 1) * 40}, 45%, 25%)`
-                                      : `hsl(${160 + Math.min(user.loginSpanDays / 5, 1) * 40}, 55%, 88%)`,
-                                  color:
-                                    theme === "dark"
-                                      ? `hsl(${160 + Math.min(user.loginSpanDays / 5, 1) * 40}, 55%, 70%)`
-                                      : `hsl(${160 + Math.min(user.loginSpanDays / 5, 1) * 40}, 50%, 30%)`,
-                                }}
-                              >
-                                {user.loginSpanDays}d
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
+                        {[...returningData.returningUsers]
+                          .sort((a, b) => a.loginSpanDays - b.loginSpanDays)
+                          .map((user, index) => (
+                            <tr
+                              key={user.email}
+                              className="group hover:bg-[var(--background-hover)] transition-colors"
+                            >
+                              <td className="py-2.5 pr-4 text-xs text-[var(--text-tertiary)]">
+                                {index + 1}
+                              </td>
+                              <td className="py-2.5 pr-4 font-mono text-xs text-[var(--foreground)] max-w-[240px] truncate">
+                                {user.email}
+                              </td>
+                              <td className="py-2.5 pr-4 text-xs text-[var(--text-secondary)] whitespace-nowrap">
+                                {user.firstLogin}
+                              </td>
+                              <td className="py-2.5 pr-4 text-xs text-[var(--text-secondary)] whitespace-nowrap">
+                                {user.lastLogin}
+                              </td>
+                              <td className="py-2.5 text-right">
+                                <span
+                                  className="inline-flex items-center justify-center rounded-full px-2.5 py-0.5 text-xs font-semibold"
+                                  style={{
+                                    background:
+                                      theme === "dark"
+                                        ? `hsl(${160 + Math.min(user.loginSpanDays / 5, 1) * 40}, 45%, 25%)`
+                                        : `hsl(${160 + Math.min(user.loginSpanDays / 5, 1) * 40}, 55%, 88%)`,
+                                    color:
+                                      theme === "dark"
+                                        ? `hsl(${160 + Math.min(user.loginSpanDays / 5, 1) * 40}, 55%, 70%)`
+                                        : `hsl(${160 + Math.min(user.loginSpanDays / 5, 1) * 40}, 50%, 30%)`,
+                                  }}
+                                >
+                                  {user.loginSpanDays}d
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
                       </tbody>
                     </table>
                   </div>
@@ -1470,11 +1475,13 @@ export default function Dashboard() {
                 ) : userDashboards.length > 0 ? (
                   (() => {
                     const ITEMS_PER_PAGE = 20;
-                    const filtered = userDashboards.filter((d) =>
-                      d.email
-                        .toLowerCase()
-                        .includes(userDashboardsSearch.toLowerCase()),
-                    );
+                    const filtered = userDashboards
+                      .filter((d) =>
+                        d.email
+                          .toLowerCase()
+                          .includes(userDashboardsSearch.toLowerCase()),
+                      )
+                      .sort((a, b) => b.total_papers - a.total_papers);
                     const totalPages = Math.ceil(
                       filtered.length / ITEMS_PER_PAGE,
                     );
@@ -1489,7 +1496,7 @@ export default function Dashboard() {
                         <div className="hidden sm:grid grid-cols-12 gap-4 px-4 py-3 rounded-t-lg bg-[var(--background-tertiary)] border border-[var(--border)] text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">
                           <div className="col-span-1"></div>
                           <div className="col-span-4">Email</div>
-                          <div className="col-span-1 text-center">Papers</div>
+                          <div className="col-span-1 text-center">Papers ↓</div>
                           <div className="col-span-1 text-center">Videos</div>
                           <div className="col-span-1 text-center">Reels</div>
                           <div className="col-span-1 text-center">Podcasts</div>
@@ -1499,198 +1506,209 @@ export default function Dashboard() {
 
                         {/* Table Rows */}
                         <div className="border border-t-0 border-[var(--border)] rounded-b-lg divide-y divide-[var(--border)] overflow-hidden">
-                          {paged.map((user) => (
-                            <div key={user.user_id}>
-                              {/* Main row */}
-                              <div
-                                className={cn(
-                                  "grid grid-cols-1 sm:grid-cols-12 gap-2 sm:gap-4 px-4 py-3 text-sm transition-colors cursor-pointer hover:bg-[var(--background-hover)]",
-                                  expandedUser === user.user_id &&
-                                    "bg-[var(--background-tertiary)]",
-                                )}
-                                onClick={() =>
-                                  setExpandedUser(
-                                    expandedUser === user.user_id
-                                      ? null
-                                      : user.user_id,
-                                  )
-                                }
-                              >
-                                {/* Expand icon */}
-                                <div className="hidden sm:flex col-span-1 items-center">
-                                  {expandedUser === user.user_id ? (
-                                    <ChevronDown className="h-4 w-4 text-[var(--text-tertiary)]" />
-                                  ) : (
-                                    <ChevronRight className="h-4 w-4 text-[var(--text-tertiary)]" />
-                                  )}
-                                </div>
-
-                                {/* Email */}
-                                <div className="sm:col-span-4 flex items-center gap-2">
-                                  <span
-                                    className="text-[var(--foreground)] font-medium truncate"
-                                    title={user.email}
-                                  >
-                                    {user.email}
-                                  </span>
-                                  {user.error && (
-                                    <span className="inline-flex items-center rounded-full bg-[var(--error)]/10 px-2 py-0.5 text-[10px] font-medium text-[var(--error)]">
-                                      Error
-                                    </span>
-                                  )}
-                                </div>
-
-                                {/* Stats */}
-                                <div className="sm:col-span-1 text-center text-[var(--text-secondary)]">
-                                  <span className="sm:hidden text-xs text-[var(--text-tertiary)]">
-                                    Papers:{" "}
-                                  </span>
-                                  {user.total_papers}
-                                </div>
-                                <div className="sm:col-span-1 text-center text-[var(--text-secondary)]">
-                                  <span className="sm:hidden text-xs text-[var(--text-tertiary)]">
-                                    Videos:{" "}
-                                  </span>
-                                  {user.total_outputs?.video || 0}
-                                </div>
-                                <div className="sm:col-span-1 text-center text-[var(--text-secondary)]">
-                                  <span className="sm:hidden text-xs text-[var(--text-tertiary)]">
-                                    Reels:{" "}
-                                  </span>
-                                  {user.total_outputs?.reels || 0}
-                                </div>
-                                <div className="sm:col-span-1 text-center text-[var(--text-secondary)]">
-                                  <span className="sm:hidden text-xs text-[var(--text-tertiary)]">
-                                    Podcasts:{" "}
-                                  </span>
-                                  {user.total_outputs?.podcast || 0}
-                                </div>
-                                <div className="sm:col-span-1 text-center text-[var(--text-secondary)]">
-                                  <span className="sm:hidden text-xs text-[var(--text-tertiary)]">
-                                    Posters:{" "}
-                                  </span>
-                                  {user.total_outputs?.poster || 0}
-                                </div>
-
-                                {/* Actions */}
+                          {paged.map((user, pagedIdx) => {
+                            const rank =
+                              userDashboardsPage * ITEMS_PER_PAGE +
+                              pagedIdx +
+                              1;
+                            return (
+                              <div key={user.user_id}>
+                                {/* Main row */}
                                 <div
-                                  className="sm:col-span-2 flex items-center justify-end"
-                                  onClick={(e) => e.stopPropagation()}
+                                  className={cn(
+                                    "grid grid-cols-1 sm:grid-cols-12 gap-2 sm:gap-4 px-4 py-3 text-sm transition-colors cursor-pointer hover:bg-[var(--background-hover)]",
+                                    expandedUser === user.user_id &&
+                                      "bg-[var(--background-tertiary)]",
+                                  )}
+                                  onClick={() =>
+                                    setExpandedUser(
+                                      expandedUser === user.user_id
+                                        ? null
+                                        : user.user_id,
+                                    )
+                                  }
                                 >
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() =>
-                                      refreshSingleUser(user.user_id)
-                                    }
-                                    disabled={refreshingUser === user.user_id}
-                                    className="h-7 px-2 text-xs"
-                                  >
-                                    <RefreshCw
-                                      className={`h-3 w-3 ${refreshingUser === user.user_id ? "animate-spin" : ""}`}
-                                    />
-                                    <span className="ml-1">
-                                      {refreshingUser === user.user_id
-                                        ? "..."
-                                        : "Refresh"}
+                                  {/* Rank + Expand icon */}
+                                  <div className="hidden sm:flex col-span-1 items-center gap-1">
+                                    <span className="text-[11px] font-mono text-[var(--text-tertiary)] w-5 text-right shrink-0">
+                                      {rank}
                                     </span>
-                                  </Button>
+                                    {expandedUser === user.user_id ? (
+                                      <ChevronDown className="h-4 w-4 text-[var(--text-tertiary)]" />
+                                    ) : (
+                                      <ChevronRight className="h-4 w-4 text-[var(--text-tertiary)]" />
+                                    )}
+                                  </div>
+
+                                  {/* Email */}
+                                  <div className="sm:col-span-4 flex items-center gap-2">
+                                    <span
+                                      className="text-[var(--foreground)] font-medium truncate"
+                                      title={user.email}
+                                    >
+                                      {user.email}
+                                    </span>
+                                    {user.error && (
+                                      <span className="inline-flex items-center rounded-full bg-[var(--error)]/10 px-2 py-0.5 text-[10px] font-medium text-[var(--error)]">
+                                        Error
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {/* Stats */}
+                                  <div className="sm:col-span-1 text-center text-[var(--text-secondary)]">
+                                    <span className="sm:hidden text-xs text-[var(--text-tertiary)]">
+                                      Papers:{" "}
+                                    </span>
+                                    {user.total_papers}
+                                  </div>
+                                  <div className="sm:col-span-1 text-center text-[var(--text-secondary)]">
+                                    <span className="sm:hidden text-xs text-[var(--text-tertiary)]">
+                                      Videos:{" "}
+                                    </span>
+                                    {user.total_outputs?.video || 0}
+                                  </div>
+                                  <div className="sm:col-span-1 text-center text-[var(--text-secondary)]">
+                                    <span className="sm:hidden text-xs text-[var(--text-tertiary)]">
+                                      Reels:{" "}
+                                    </span>
+                                    {user.total_outputs?.reels || 0}
+                                  </div>
+                                  <div className="sm:col-span-1 text-center text-[var(--text-secondary)]">
+                                    <span className="sm:hidden text-xs text-[var(--text-tertiary)]">
+                                      Podcasts:{" "}
+                                    </span>
+                                    {user.total_outputs?.podcast || 0}
+                                  </div>
+                                  <div className="sm:col-span-1 text-center text-[var(--text-secondary)]">
+                                    <span className="sm:hidden text-xs text-[var(--text-tertiary)]">
+                                      Posters:{" "}
+                                    </span>
+                                    {user.total_outputs?.poster || 0}
+                                  </div>
+
+                                  {/* Actions */}
+                                  <div
+                                    className="sm:col-span-2 flex items-center justify-end"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() =>
+                                        refreshSingleUser(user.user_id)
+                                      }
+                                      disabled={refreshingUser === user.user_id}
+                                      className="h-7 px-2 text-xs"
+                                    >
+                                      <RefreshCw
+                                        className={`h-3 w-3 ${refreshingUser === user.user_id ? "animate-spin" : ""}`}
+                                      />
+                                      <span className="ml-1">
+                                        {refreshingUser === user.user_id
+                                          ? "..."
+                                          : "Refresh"}
+                                      </span>
+                                    </Button>
+                                  </div>
                                 </div>
-                              </div>
 
-                              {/* Expanded detail */}
-                              {expandedUser === user.user_id && (
-                                <div className="px-4 pb-4 pt-2 bg-[var(--background-tertiary)]/50">
-                                  {/* Papers by Source */}
-                                  {Object.keys(user.papers_by_source || {})
-                                    .length > 0 && (
-                                    <div className="mb-4">
-                                      <p className="text-xs font-semibold text-[var(--text-secondary)] mb-2 uppercase tracking-wider">
-                                        Papers by Source
-                                      </p>
-                                      <div className="flex flex-wrap gap-2">
-                                        {Object.entries(
-                                          user.papers_by_source,
-                                        ).map(([source, count]) => (
-                                          <span
-                                            key={source}
-                                            className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--background-secondary)] px-3 py-1 text-xs font-medium text-[var(--text-secondary)]"
-                                          >
-                                            <FileText className="h-3 w-3" />
-                                            {source}: {count}
-                                          </span>
-                                        ))}
-                                      </div>
-                                    </div>
-                                  )}
-
-                                  {/* Papers List */}
-                                  {user.papers && user.papers.length > 0 && (
-                                    <div>
-                                      <p className="text-xs font-semibold text-[var(--text-secondary)] mb-2 uppercase tracking-wider">
-                                        Papers ({user.papers.length})
-                                      </p>
-                                      <div className="space-y-2 max-h-80 overflow-y-auto">
-                                        {user.papers.map((paper) => (
-                                          <div
-                                            key={paper.paper_id}
-                                            className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-lg border border-[var(--border)] bg-[var(--background-secondary)] px-3 py-2"
-                                          >
-                                            <div className="flex-1 min-w-0">
-                                              <p
-                                                className="text-sm font-medium text-[var(--foreground)] truncate"
-                                                title={paper.title}
-                                              >
-                                                {paper.title}
-                                              </p>
-                                              <div className="flex flex-wrap items-center gap-2 mt-1">
-                                                <span className="inline-flex items-center rounded-full bg-[var(--accent-primary)]/10 px-2 py-0.5 text-[10px] font-medium text-[var(--accent-primary)]">
-                                                  {paper.source_type}
-                                                </span>
-                                                <span className="text-[10px] text-[var(--text-tertiary)]">
-                                                  {new Date(
-                                                    paper.created_at,
-                                                  ).toLocaleDateString()}
-                                                </span>
-                                                {paper.outputs.map((output) => (
-                                                  <span
-                                                    key={output}
-                                                    className="inline-flex items-center rounded-full bg-[var(--success)]/10 px-2 py-0.5 text-[10px] font-medium text-[var(--success)]"
-                                                  >
-                                                    {output}
-                                                  </span>
-                                                ))}
-                                              </div>
-                                            </div>
+                                {/* Expanded detail */}
+                                {expandedUser === user.user_id && (
+                                  <div className="px-4 pb-4 pt-2 bg-[var(--background-tertiary)]/50">
+                                    {/* Papers by Source */}
+                                    {Object.keys(user.papers_by_source || {})
+                                      .length > 0 && (
+                                      <div className="mb-4">
+                                        <p className="text-xs font-semibold text-[var(--text-secondary)] mb-2 uppercase tracking-wider">
+                                          Papers by Source
+                                        </p>
+                                        <div className="flex flex-wrap gap-2">
+                                          {Object.entries(
+                                            user.papers_by_source,
+                                          ).map(([source, count]) => (
                                             <span
-                                              className={cn(
-                                                "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium",
-                                                paper.status === "uploaded"
-                                                  ? "bg-[var(--success)]/10 text-[var(--success)]"
-                                                  : "bg-[var(--warning)]/10 text-[var(--warning)]",
-                                              )}
+                                              key={source}
+                                              className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--background-secondary)] px-3 py-1 text-xs font-medium text-[var(--text-secondary)]"
                                             >
-                                              {paper.status}
+                                              <FileText className="h-3 w-3" />
+                                              {source}: {count}
                                             </span>
-                                          </div>
-                                        ))}
+                                          ))}
+                                        </div>
                                       </div>
-                                    </div>
-                                  )}
+                                    )}
 
-                                  {/* Fetched at */}
-                                  {user.fetched_at && (
-                                    <p className="mt-3 text-[10px] text-[var(--text-tertiary)]">
-                                      Last fetched:{" "}
-                                      {new Date(
-                                        user.fetched_at,
-                                      ).toLocaleString()}
-                                    </p>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          ))}
+                                    {/* Papers List */}
+                                    {user.papers && user.papers.length > 0 && (
+                                      <div>
+                                        <p className="text-xs font-semibold text-[var(--text-secondary)] mb-2 uppercase tracking-wider">
+                                          Papers ({user.papers.length})
+                                        </p>
+                                        <div className="space-y-2 max-h-80 overflow-y-auto">
+                                          {user.papers.map((paper) => (
+                                            <div
+                                              key={paper.paper_id}
+                                              className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-lg border border-[var(--border)] bg-[var(--background-secondary)] px-3 py-2"
+                                            >
+                                              <div className="flex-1 min-w-0">
+                                                <p
+                                                  className="text-sm font-medium text-[var(--foreground)] truncate"
+                                                  title={paper.title}
+                                                >
+                                                  {paper.title}
+                                                </p>
+                                                <div className="flex flex-wrap items-center gap-2 mt-1">
+                                                  <span className="inline-flex items-center rounded-full bg-[var(--accent-primary)]/10 px-2 py-0.5 text-[10px] font-medium text-[var(--accent-primary)]">
+                                                    {paper.source_type}
+                                                  </span>
+                                                  <span className="text-[10px] text-[var(--text-tertiary)]">
+                                                    {new Date(
+                                                      paper.created_at,
+                                                    ).toLocaleDateString()}
+                                                  </span>
+                                                  {paper.outputs.map(
+                                                    (output) => (
+                                                      <span
+                                                        key={output}
+                                                        className="inline-flex items-center rounded-full bg-[var(--success)]/10 px-2 py-0.5 text-[10px] font-medium text-[var(--success)]"
+                                                      >
+                                                        {output}
+                                                      </span>
+                                                    ),
+                                                  )}
+                                                </div>
+                                              </div>
+                                              <span
+                                                className={cn(
+                                                  "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium",
+                                                  paper.status === "uploaded"
+                                                    ? "bg-[var(--success)]/10 text-[var(--success)]"
+                                                    : "bg-[var(--warning)]/10 text-[var(--warning)]",
+                                                )}
+                                              >
+                                                {paper.status}
+                                              </span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* Fetched at */}
+                                    {user.fetched_at && (
+                                      <p className="mt-3 text-[10px] text-[var(--text-tertiary)]">
+                                        Last fetched:{" "}
+                                        {new Date(
+                                          user.fetched_at,
+                                        ).toLocaleString()}
+                                      </p>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
 
                         {/* Pagination */}

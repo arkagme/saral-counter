@@ -10,6 +10,7 @@
  * Usage:  node fetch-user-dashboards.js
  */
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const fs = require("fs");
 const path = require("path");
 const admin = require("firebase-admin");

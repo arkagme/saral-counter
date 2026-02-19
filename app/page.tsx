@@ -1109,7 +1109,7 @@ export default function Dashboard() {
             )}
 
             {/* Returning Users Section - Protected */}
-            {isAuthenticated && (
+            {/* {isAuthenticated && (
               <Card className="flex flex-col">
                 <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div>
@@ -1227,7 +1227,7 @@ export default function Dashboard() {
                   </div>
                 )}
               </Card>
-            )}
+            )} */}
 
             {/* Platform Stats Section - Protected */}
             {isAuthenticated && (

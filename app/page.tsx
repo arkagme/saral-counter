@@ -14,6 +14,8 @@ import {
   Bar,
   Cell,
   LabelList,
+  PieChart,
+  Pie,
 } from "recharts";
 import {
   Users,
@@ -28,6 +30,16 @@ import {
   Lock,
   Unlock,
   X,
+  FileText,
+  Video,
+  Mic,
+  Image,
+  Search,
+  ChevronDown,
+  ChevronRight,
+  BarChart3,
+  Film,
+  LogIn,
 } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -274,6 +286,36 @@ interface ReturningUsersData {
   returningPercentage: string;
 }
 
+interface PlatformStats {
+  users: number;
+  logins: number;
+  papers: number;
+  videos: number;
+  reels: number;
+  podcasts: number;
+  posters: number;
+}
+
+interface UserDashboardPaper {
+  paper_id: string;
+  title: string;
+  source_type: string;
+  created_at: string;
+  outputs: string[];
+  status: string;
+}
+
+interface UserDashboardEntry {
+  user_id: string;
+  email: string;
+  total_papers: number;
+  papers_by_source: Record<string, number>;
+  total_outputs: Record<string, number>;
+  papers: UserDashboardPaper[];
+  fetched_at: string;
+  error?: string;
+}
+
 export default function Dashboard() {
   const [data, setData] = useState<DataPoint[]>([]);
   const [liveCount, setLiveCount] = useState<number | null>(null);
@@ -291,6 +333,22 @@ export default function Dashboard() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authError, setAuthError] = useState("");
+
+  // Platform Stats state
+  const [platformStats, setPlatformStats] = useState<PlatformStats | null>(null);
+  const [platformStatsLoading, setPlatformStatsLoading] = useState(false);
+  const [platformStatsError, setPlatformStatsError] = useState("");
+
+  // User Dashboards state
+  const [userDashboards, setUserDashboards] = useState<UserDashboardEntry[]>([]);
+  const [userDashboardsLoading, setUserDashboardsLoading] = useState(false);
+  const [userDashboardsError, setUserDashboardsError] = useState("");
+  const [userDashboardsCachedAt, setUserDashboardsCachedAt] = useState<string | null>(null);
+  const [userDashboardsPage, setUserDashboardsPage] = useState(0);
+  const [userDashboardsSearch, setUserDashboardsSearch] = useState("");
+  const [refreshingUser, setRefreshingUser] = useState<string | null>(null);
+  const [expandedUser, setExpandedUser] = useState<string | null>(null);
+  const [userDashboardsFetched, setUserDashboardsFetched] = useState(false);
 
   // Color constants based on CSS variables for Recharts
   const chartColors = {
@@ -388,6 +446,78 @@ export default function Dashboard() {
     }
   }, []);
 
+  // Fetch platform stats (independent, non-blocking)
+  const fetchPlatformStats = useCallback(async () => {
+    setPlatformStatsLoading(true);
+    setPlatformStatsError("");
+    try {
+      const res = await fetch("/api/analytics/platform-stats");
+      const json = await res.json();
+      if (json.error) {
+        setPlatformStatsError(json.error);
+      } else {
+        setPlatformStats(json);
+      }
+    } catch (err) {
+      console.error("Error fetching platform stats:", err);
+      setPlatformStatsError("Failed to fetch platform stats");
+    } finally {
+      setPlatformStatsLoading(false);
+    }
+  }, []);
+
+  // Fetch all user dashboards (independent, non-blocking, only first time)
+  const fetchUserDashboards = useCallback(async (force = false) => {
+    setUserDashboardsLoading(true);
+    setUserDashboardsError("");
+    try {
+      const res = await fetch(`/api/analytics/user-dashboards${force ? "?force=true" : ""}`);
+      const json = await res.json();
+      if (json.error) {
+        setUserDashboardsError(json.error);
+      } else {
+        setUserDashboards(json.dashboards || []);
+        setUserDashboardsCachedAt(json.cached_at || null);
+        setUserDashboardsFetched(true);
+      }
+    } catch (err) {
+      console.error("Error fetching user dashboards:", err);
+      setUserDashboardsError("Failed to fetch user dashboards");
+    } finally {
+      setUserDashboardsLoading(false);
+    }
+  }, []);
+
+  // Refresh a single user's dashboard
+  const refreshSingleUser = useCallback(async (userId: string) => {
+    setRefreshingUser(userId);
+    try {
+      const res = await fetch(`/api/analytics/user-dashboard?userId=${userId}`);
+      const json = await res.json();
+      if (!json.error) {
+        setUserDashboards((prev) =>
+          prev.map((d) =>
+            d.user_id === userId
+              ? {
+                  ...d,
+                  total_papers: json.total_papers || 0,
+                  papers_by_source: json.papers_by_source || {},
+                  total_outputs: json.total_outputs || {},
+                  papers: json.papers || [],
+                  fetched_at: json.fetched_at || new Date().toISOString(),
+                  error: undefined,
+                }
+              : d
+          )
+        );
+      }
+    } catch (err) {
+      console.error(`Error refreshing user ${userId}:`, err);
+    } finally {
+      setRefreshingUser(null);
+    }
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -440,6 +570,16 @@ export default function Dashboard() {
       setIsAuthenticated(true);
     }
   }, []);
+
+  // Fetch analytics data when authenticated (non-blocking, independent)
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchPlatformStats();
+      if (!userDashboardsFetched) {
+        fetchUserDashboards();
+      }
+    }
+  }, [isAuthenticated, fetchPlatformStats, fetchUserDashboards, userDashboardsFetched]);
 
   // Handle authentication
   const handleAuthenticate = (password: string) => {
@@ -1115,6 +1255,450 @@ export default function Dashboard() {
                   <div className="flex flex-col items-center justify-center h-40 text-[var(--text-tertiary)]">
                     <UserCheck className="h-8 w-8 mb-2 opacity-50" />
                     <p className="text-sm">No returning users found</p>
+                  </div>
+                )}
+              </Card>
+            )}
+
+            {/* Platform Stats Section - Protected */}
+            {isAuthenticated && (
+              <Card className="flex flex-col">
+                <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <h2 className="text-lg font-semibold text-[var(--foreground)]">
+                      Platform Statistics
+                    </h2>
+                    <p className="text-sm text-[var(--text-secondary)]">
+                      Real-time content and usage metrics from the platform
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={fetchPlatformStats}
+                    disabled={platformStatsLoading}
+                  >
+                    <RefreshCw
+                      className={`h-3.5 w-3.5 ${platformStatsLoading ? "animate-spin" : ""}`}
+                    />
+                    <span className="ml-1">Refresh</span>
+                  </Button>
+                </div>
+
+                {platformStatsLoading && !platformStats ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-4">
+                    {[1, 2, 3, 4, 5, 6, 7].map((i) => (
+                      <div
+                        key={i}
+                        className="h-24 rounded-lg bg-[var(--background-tertiary)] animate-pulse"
+                      />
+                    ))}
+                  </div>
+                ) : platformStatsError ? (
+                  <div className="flex flex-col items-center justify-center h-40 text-[var(--text-tertiary)]">
+                    <BarChart3 className="h-8 w-8 mb-2 opacity-50" />
+                    <p className="text-sm">{platformStatsError}</p>
+                  </div>
+                ) : platformStats ? (
+                  <div className="space-y-6">
+                    {/* Stats Grid */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-4">
+                      {[
+                        { label: "Users", value: platformStats.users, icon: Users, color: "var(--accent-primary)" },
+                        { label: "Logins", value: platformStats.logins, icon: LogIn, color: "var(--success)" },
+                        { label: "Papers", value: platformStats.papers, icon: FileText, color: "var(--info)" },
+                        { label: "Videos", value: platformStats.videos, icon: Video, color: "var(--warning)" },
+                        { label: "Reels", value: platformStats.reels, icon: Film, color: "#a855f7" },
+                        { label: "Podcasts", value: platformStats.podcasts, icon: Mic, color: "#ec4899" },
+                        { label: "Posters", value: platformStats.posters, icon: Image, color: "#14b8a6" },
+                      ].map((stat) => {
+                        const IconComp = stat.icon;
+                        return (
+                          <div
+                            key={stat.label}
+                            className="flex flex-col items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--background-tertiary)] p-4 transition-all duration-200 hover:shadow-md hover:border-[var(--border-dark)]"
+                          >
+                            <IconComp
+                              className="h-5 w-5 mb-2"
+                              style={{ color: stat.color }}
+                            />
+                            <p className="text-2xl font-bold text-[var(--foreground)]">
+                              {stat.value.toLocaleString()}
+                            </p>
+                            <p className="text-xs font-medium text-[var(--text-secondary)] mt-1">
+                              {stat.label}
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Content Distribution Pie Chart */}
+                    <div className="flex flex-col items-center">
+                      <h3 className="text-sm font-semibold text-[var(--text-secondary)] mb-4">
+                        Content Distribution
+                      </h3>
+                      <div className="h-[280px] w-full max-w-md">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={[
+                                { name: "Papers", value: platformStats.papers, fill: theme === "dark" ? "#5b9fff" : "#0288d1" },
+                                { name: "Videos", value: platformStats.videos, fill: theme === "dark" ? "#ffb020" : "#f57c00" },
+                                { name: "Reels", value: platformStats.reels, fill: "#a855f7" },
+                                { name: "Podcasts", value: platformStats.podcasts, fill: "#ec4899" },
+                                { name: "Posters", value: platformStats.posters, fill: "#14b8a6" },
+                              ].filter((d) => d.value > 0)}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={60}
+                              outerRadius={100}
+                              paddingAngle={3}
+                              dataKey="value"
+                              label={({ name, value }) => `${name}: ${value}`}
+                              labelLine={true}
+                              animationDuration={800}
+                            />
+                            <Tooltip
+                              contentStyle={{
+                                backgroundColor: chartColors.tooltipBg,
+                                borderColor: chartColors.tooltipBorder,
+                                borderRadius: "0.5rem",
+                                boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
+                                padding: "12px",
+                              }}
+                            />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+              </Card>
+            )}
+
+            {/* User Dashboards Section - Protected */}
+            {isAuthenticated && (
+              <Card className="flex flex-col">
+                <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <h2 className="text-lg font-semibold text-[var(--foreground)]">
+                      User Content Dashboards
+                    </h2>
+                    <p className="text-sm text-[var(--text-secondary)]">
+                      Per-user paper and output analytics
+                      {userDashboardsCachedAt && (
+                        <span className="ml-2 text-xs text-[var(--text-tertiary)]">
+                          (cached: {new Date(userDashboardsCachedAt).toLocaleString()})
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {userDashboards.length > 0 && (
+                      <div className="inline-flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--background-tertiary)] px-3 py-1 text-xs font-medium text-[var(--text-secondary)]">
+                        <Users className="h-3.5 w-3.5 text-[var(--accent-primary)]" />
+                        {userDashboards.length} users
+                      </div>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => fetchUserDashboards(true)}
+                      disabled={userDashboardsLoading}
+                    >
+                      <RefreshCw
+                        className={`h-3.5 w-3.5 ${userDashboardsLoading ? "animate-spin" : ""}`}
+                      />
+                      <span className="ml-1">Refresh All</span>
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Search Bar */}
+                {userDashboards.length > 0 && (
+                  <div className="relative mb-4">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--text-tertiary)]" />
+                    <input
+                      type="text"
+                      value={userDashboardsSearch}
+                      onChange={(e) => {
+                        setUserDashboardsSearch(e.target.value);
+                        setUserDashboardsPage(0);
+                      }}
+                      placeholder="Search by email..."
+                      className="h-10 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] pl-10 pr-3 py-2 text-sm text-[var(--foreground)] transition-colors placeholder:text-[var(--text-tertiary)] focus:border-[var(--accent-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]/20"
+                    />
+                  </div>
+                )}
+
+                {userDashboardsLoading && userDashboards.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-40">
+                    <RefreshCw className="h-6 w-6 animate-spin text-[var(--accent-primary)] mb-3" />
+                    <p className="text-sm text-[var(--text-secondary)]">
+                      Fetching user dashboards... This may take a while for the first time.
+                    </p>
+                  </div>
+                ) : userDashboardsError ? (
+                  <div className="flex flex-col items-center justify-center h-40 text-[var(--text-tertiary)]">
+                    <BarChart3 className="h-8 w-8 mb-2 opacity-50" />
+                    <p className="text-sm">{userDashboardsError}</p>
+                  </div>
+                ) : userDashboards.length > 0 ? (
+                  (() => {
+                    const ITEMS_PER_PAGE = 20;
+                    const filtered = userDashboards.filter((d) =>
+                      d.email
+                        .toLowerCase()
+                        .includes(userDashboardsSearch.toLowerCase())
+                    );
+                    const totalPages = Math.ceil(
+                      filtered.length / ITEMS_PER_PAGE
+                    );
+                    const paged = filtered.slice(
+                      userDashboardsPage * ITEMS_PER_PAGE,
+                      (userDashboardsPage + 1) * ITEMS_PER_PAGE
+                    );
+
+                    return (
+                      <div>
+                        {/* Table Header */}
+                        <div className="hidden sm:grid grid-cols-12 gap-4 px-4 py-3 rounded-t-lg bg-[var(--background-tertiary)] border border-[var(--border)] text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">
+                          <div className="col-span-1"></div>
+                          <div className="col-span-4">Email</div>
+                          <div className="col-span-1 text-center">Papers</div>
+                          <div className="col-span-1 text-center">Videos</div>
+                          <div className="col-span-1 text-center">Reels</div>
+                          <div className="col-span-1 text-center">Podcasts</div>
+                          <div className="col-span-1 text-center">Posters</div>
+                          <div className="col-span-2 text-right">Actions</div>
+                        </div>
+
+                        {/* Table Rows */}
+                        <div className="border border-t-0 border-[var(--border)] rounded-b-lg divide-y divide-[var(--border)] overflow-hidden">
+                          {paged.map((user) => (
+                            <div key={user.user_id}>
+                              {/* Main row */}
+                              <div
+                                className={cn(
+                                  "grid grid-cols-1 sm:grid-cols-12 gap-2 sm:gap-4 px-4 py-3 text-sm transition-colors cursor-pointer hover:bg-[var(--background-hover)]",
+                                  expandedUser === user.user_id &&
+                                    "bg-[var(--background-tertiary)]"
+                                )}
+                                onClick={() =>
+                                  setExpandedUser(
+                                    expandedUser === user.user_id
+                                      ? null
+                                      : user.user_id
+                                  )
+                                }
+                              >
+                                {/* Expand icon */}
+                                <div className="hidden sm:flex col-span-1 items-center">
+                                  {expandedUser === user.user_id ? (
+                                    <ChevronDown className="h-4 w-4 text-[var(--text-tertiary)]" />
+                                  ) : (
+                                    <ChevronRight className="h-4 w-4 text-[var(--text-tertiary)]" />
+                                  )}
+                                </div>
+
+                                {/* Email */}
+                                <div className="sm:col-span-4 flex items-center gap-2">
+                                  <span
+                                    className="text-[var(--foreground)] font-medium truncate"
+                                    title={user.email}
+                                  >
+                                    {user.email}
+                                  </span>
+                                  {user.error && (
+                                    <span className="inline-flex items-center rounded-full bg-[var(--error)]/10 px-2 py-0.5 text-[10px] font-medium text-[var(--error)]">
+                                      Error
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* Stats */}
+                                <div className="sm:col-span-1 text-center text-[var(--text-secondary)]">
+                                  <span className="sm:hidden text-xs text-[var(--text-tertiary)]">Papers: </span>
+                                  {user.total_papers}
+                                </div>
+                                <div className="sm:col-span-1 text-center text-[var(--text-secondary)]">
+                                  <span className="sm:hidden text-xs text-[var(--text-tertiary)]">Videos: </span>
+                                  {user.total_outputs?.video || 0}
+                                </div>
+                                <div className="sm:col-span-1 text-center text-[var(--text-secondary)]">
+                                  <span className="sm:hidden text-xs text-[var(--text-tertiary)]">Reels: </span>
+                                  {user.total_outputs?.reels || 0}
+                                </div>
+                                <div className="sm:col-span-1 text-center text-[var(--text-secondary)]">
+                                  <span className="sm:hidden text-xs text-[var(--text-tertiary)]">Podcasts: </span>
+                                  {user.total_outputs?.podcast || 0}
+                                </div>
+                                <div className="sm:col-span-1 text-center text-[var(--text-secondary)]">
+                                  <span className="sm:hidden text-xs text-[var(--text-tertiary)]">Posters: </span>
+                                  {user.total_outputs?.poster || 0}
+                                </div>
+
+                                {/* Actions */}
+                                <div
+                                  className="sm:col-span-2 flex items-center justify-end"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() =>
+                                      refreshSingleUser(user.user_id)
+                                    }
+                                    disabled={refreshingUser === user.user_id}
+                                    className="h-7 px-2 text-xs"
+                                  >
+                                    <RefreshCw
+                                      className={`h-3 w-3 ${refreshingUser === user.user_id ? "animate-spin" : ""}`}
+                                    />
+                                    <span className="ml-1">
+                                      {refreshingUser === user.user_id
+                                        ? "..."
+                                        : "Refresh"}
+                                    </span>
+                                  </Button>
+                                </div>
+                              </div>
+
+                              {/* Expanded detail */}
+                              {expandedUser === user.user_id && (
+                                <div className="px-4 pb-4 pt-2 bg-[var(--background-tertiary)]/50">
+                                  {/* Papers by Source */}
+                                  {Object.keys(user.papers_by_source || {}).length > 0 && (
+                                    <div className="mb-4">
+                                      <p className="text-xs font-semibold text-[var(--text-secondary)] mb-2 uppercase tracking-wider">
+                                        Papers by Source
+                                      </p>
+                                      <div className="flex flex-wrap gap-2">
+                                        {Object.entries(user.papers_by_source).map(
+                                          ([source, count]) => (
+                                            <span
+                                              key={source}
+                                              className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--background-secondary)] px-3 py-1 text-xs font-medium text-[var(--text-secondary)]"
+                                            >
+                                              <FileText className="h-3 w-3" />
+                                              {source}: {count}
+                                            </span>
+                                          )
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Papers List */}
+                                  {user.papers && user.papers.length > 0 && (
+                                    <div>
+                                      <p className="text-xs font-semibold text-[var(--text-secondary)] mb-2 uppercase tracking-wider">
+                                        Papers ({user.papers.length})
+                                      </p>
+                                      <div className="space-y-2 max-h-80 overflow-y-auto">
+                                        {user.papers.map((paper) => (
+                                          <div
+                                            key={paper.paper_id}
+                                            className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-lg border border-[var(--border)] bg-[var(--background-secondary)] px-3 py-2"
+                                          >
+                                            <div className="flex-1 min-w-0">
+                                              <p className="text-sm font-medium text-[var(--foreground)] truncate" title={paper.title}>
+                                                {paper.title}
+                                              </p>
+                                              <div className="flex flex-wrap items-center gap-2 mt-1">
+                                                <span className="inline-flex items-center rounded-full bg-[var(--accent-primary)]/10 px-2 py-0.5 text-[10px] font-medium text-[var(--accent-primary)]">
+                                                  {paper.source_type}
+                                                </span>
+                                                <span className="text-[10px] text-[var(--text-tertiary)]">
+                                                  {new Date(paper.created_at).toLocaleDateString()}
+                                                </span>
+                                                {paper.outputs.map((output) => (
+                                                  <span
+                                                    key={output}
+                                                    className="inline-flex items-center rounded-full bg-[var(--success)]/10 px-2 py-0.5 text-[10px] font-medium text-[var(--success)]"
+                                                  >
+                                                    {output}
+                                                  </span>
+                                                ))}
+                                              </div>
+                                            </div>
+                                            <span
+                                              className={cn(
+                                                "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium",
+                                                paper.status === "uploaded"
+                                                  ? "bg-[var(--success)]/10 text-[var(--success)]"
+                                                  : "bg-[var(--warning)]/10 text-[var(--warning)]"
+                                              )}
+                                            >
+                                              {paper.status}
+                                            </span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Fetched at */}
+                                  {user.fetched_at && (
+                                    <p className="mt-3 text-[10px] text-[var(--text-tertiary)]">
+                                      Last fetched: {new Date(user.fetched_at).toLocaleString()}
+                                    </p>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Pagination */}
+                        {totalPages > 1 && (
+                          <div className="flex items-center justify-between mt-4 pt-4 border-t border-[var(--border)]">
+                            <p className="text-xs text-[var(--text-secondary)]">
+                              Showing {userDashboardsPage * ITEMS_PER_PAGE + 1}–
+                              {Math.min(
+                                (userDashboardsPage + 1) * ITEMS_PER_PAGE,
+                                filtered.length
+                              )}{" "}
+                              of {filtered.length}
+                            </p>
+                            <div className="flex gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                  setUserDashboardsPage((p) =>
+                                    Math.max(0, p - 1)
+                                  )
+                                }
+                                disabled={userDashboardsPage === 0}
+                              >
+                                Previous
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                  setUserDashboardsPage((p) =>
+                                    Math.min(totalPages - 1, p + 1)
+                                  )
+                                }
+                                disabled={
+                                  userDashboardsPage >= totalPages - 1
+                                }
+                              >
+                                Next
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-40 text-[var(--text-tertiary)]">
+                    <Users className="h-8 w-8 mb-2 opacity-50" />
+                    <p className="text-sm">No user dashboard data available</p>
                   </div>
                 )}
               </Card>

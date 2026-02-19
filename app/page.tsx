@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useTheme } from "next-themes";
 import {
   LineChart,
@@ -42,6 +42,7 @@ import {
 } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import Fuse from "fuse.js";
 
 // --- Utility Functions ---
 function cn(...inputs: ClassValue[]) {
@@ -354,6 +355,17 @@ export default function Dashboard() {
   const [refreshingUser, setRefreshingUser] = useState<string | null>(null);
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
   const [userDashboardsFetched, setUserDashboardsFetched] = useState(false);
+
+  // Fuse.js fuzzy search instance for email search
+  const fuse = useMemo(
+    () =>
+      new Fuse(userDashboards, {
+        keys: ["email"],
+        threshold: 0.4,
+        includeMatches: true,
+      }),
+    [userDashboards],
+  );
 
   // Color constants based on CSS variables for Recharts
   const chartColors = {
@@ -1475,13 +1487,13 @@ export default function Dashboard() {
                 ) : userDashboards.length > 0 ? (
                   (() => {
                     const ITEMS_PER_PAGE = 20;
-                    const filtered = userDashboards
-                      .filter((d) =>
-                        d.email
-                          .toLowerCase()
-                          .includes(userDashboardsSearch.toLowerCase()),
-                      )
-                      .sort((a, b) => b.total_papers - a.total_papers);
+                    const filtered = userDashboardsSearch.trim()
+                      ? fuse
+                          .search(userDashboardsSearch)
+                          .map((r) => r.item)
+                      : [...userDashboards].sort(
+                          (a, b) => b.total_papers - a.total_papers,
+                        );
                     const totalPages = Math.ceil(
                       filtered.length / ITEMS_PER_PAGE,
                     );

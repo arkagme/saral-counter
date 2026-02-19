@@ -15,11 +15,17 @@ if (!admin.apps.length) {
   });
 }
 
+// NOTE: Firebase Auth only stores two timestamps per user:
+//   • creationTime  → the very first sign-in (account creation)
+//   • lastSignInTime → the most recent sign-in
+// There is NO per-login history or login-count stored in Firebase Auth.
+// "loginSpanDays" = calendar days between first and last login (span, not active-day count).
+
 interface ReturningUser {
   email: string;
-  createdAt: string;
-  lastSignIn: string;
-  daysActive: number;
+  firstLogin: string; // creationTime (ISO date)
+  lastLogin: string; // lastSignInTime (ISO date)
+  loginSpanDays: number; // calendar days between first and last login
 }
 
 async function getReturningUsers(): Promise<{
@@ -45,26 +51,31 @@ async function getReturningUsers(): Promise<{
 
         if (!lastSignInTime) return;
 
-        // A "returning user" is one whose last sign-in is meaningfully
-        // after their account creation (more than 1 hour gap to filter noise)
-        const diffMs = lastSignInTime.getTime() - creationTime.getTime();
-        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+        // Compare calendar dates (YYYY-MM-DD), not raw timestamps.
+        // A "returning user" = someone whose last sign-in is on a DIFFERENT
+        // calendar day than their account-creation day.
+        const firstDate = creationTime.toISOString().split("T")[0];
+        const lastDate = lastSignInTime.toISOString().split("T")[0];
 
-        if (diffDays >= 1) {
-          returningUsers.push({
-            email: user.email,
-            createdAt: creationTime.toISOString().split("T")[0],
-            lastSignIn: lastSignInTime.toISOString().split("T")[0],
-            daysActive: diffDays,
-          });
-        }
+        if (firstDate === lastDate) return; // only logged in on the day they signed up
+
+        // Span in whole calendar days between first and last login
+        const diffMs = lastSignInTime.getTime() - creationTime.getTime();
+        const loginSpanDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+        returningUsers.push({
+          email: user.email,
+          firstLogin: firstDate,
+          lastLogin: lastDate,
+          loginSpanDays,
+        });
       });
 
       pageToken = listUsersResult.pageToken;
     } while (pageToken);
 
-    // Sort by daysActive descending (most engaged first)
-    returningUsers.sort((a, b) => b.daysActive - a.daysActive);
+    // Sort by loginSpanDays descending: longest-running users first
+    returningUsers.sort((a, b) => b.loginSpanDays - a.loginSpanDays);
 
     return { returningUsers, totalUsers };
   } catch (error) {

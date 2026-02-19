@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import admin from "@/lib/firebase-admin";
-import { getFirebaseIdToken } from "@/lib/firebase-token";
+import { getFirebaseIdTokenForUser } from "@/lib/firebase-token";
 
 export const maxDuration = 300; // 5 minutes for bulk fetch
 
@@ -29,13 +29,15 @@ interface UserDashboardEntry {
   error?: string;
 }
 
-// Fetch dashboard for a single user
+// Fetch dashboard for a single user (generates per-user token)
 async function fetchUserDashboard(
   userId: string,
-  email: string,
-  token: string
+  email: string
 ): Promise<UserDashboardEntry> {
   try {
+    // Generate token for THIS specific user
+    const token = await getFirebaseIdTokenForUser(userId);
+
     const response = await fetch(`${USER_DASHBOARD_URL}/${userId}/dashboard`, {
       headers: {
         Authorization: `Bearer ${token}`,
@@ -83,34 +85,18 @@ async function fetchUserDashboard(
 
 // Process users in batches
 async function fetchAllUserDashboards(
-  users: Array<{ uid: string; email: string }>,
-  token: string,
-  onProgress?: (completed: number, total: number) => void
+  users: Array<{ uid: string; email: string }>
 ): Promise<UserDashboardEntry[]> {
   const results: UserDashboardEntry[] = [];
 
   for (let i = 0; i < users.length; i += BATCH_SIZE) {
     const batch = users.slice(i, i + BATCH_SIZE);
 
-    // Token might expire mid-batch, refresh if needed
-    let currentToken = token;
-    try {
-      currentToken = await getFirebaseIdToken();
-    } catch {
-      // Use existing token if refresh fails
-    }
-
     const batchResults = await Promise.all(
-      batch.map((user) =>
-        fetchUserDashboard(user.uid, user.email, currentToken)
-      )
+      batch.map((user) => fetchUserDashboard(user.uid, user.email))
     );
 
     results.push(...batchResults);
-
-    if (onProgress) {
-      onProgress(Math.min(i + BATCH_SIZE, users.length), users.length);
-    }
   }
 
   return results;
@@ -175,11 +161,8 @@ export async function GET(request: NextRequest) {
     // Fetch all users from Firebase Auth
     const users = await getAllUsersWithEmails();
 
-    // Get Firebase ID token
-    const token = await getFirebaseIdToken();
-
-    // Fetch dashboards for all users in batches
-    const dashboards = await fetchAllUserDashboards(users, token);
+    // Fetch dashboards for all users in batches (per-user tokens generated internally)
+    const dashboards = await fetchAllUserDashboards(users);
 
     // Store in Firestore (split into sub-documents if too large)
     const cacheData = {

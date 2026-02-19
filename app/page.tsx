@@ -13,7 +13,6 @@ import {
   BarChart,
   Bar,
   Cell,
-  LabelList,
   PieChart,
   Pie,
 } from "recharts";
@@ -274,9 +273,9 @@ interface DataPoint {
 
 interface ReturningUser {
   email: string;
-  createdAt: string;
-  lastSignIn: string;
-  daysActive: number;
+  firstLogin: string; // date of account creation / first sign-in
+  lastLogin: string; // date of most recent sign-in
+  loginSpanDays: number; // calendar days between first and last login (NOT active-day count)
 }
 
 interface ReturningUsersData {
@@ -335,15 +334,21 @@ export default function Dashboard() {
   const [authError, setAuthError] = useState("");
 
   // Platform Stats state
-  const [platformStats, setPlatformStats] = useState<PlatformStats | null>(null);
+  const [platformStats, setPlatformStats] = useState<PlatformStats | null>(
+    null,
+  );
   const [platformStatsLoading, setPlatformStatsLoading] = useState(false);
   const [platformStatsError, setPlatformStatsError] = useState("");
 
   // User Dashboards state
-  const [userDashboards, setUserDashboards] = useState<UserDashboardEntry[]>([]);
+  const [userDashboards, setUserDashboards] = useState<UserDashboardEntry[]>(
+    [],
+  );
   const [userDashboardsLoading, setUserDashboardsLoading] = useState(false);
   const [userDashboardsError, setUserDashboardsError] = useState("");
-  const [userDashboardsCachedAt, setUserDashboardsCachedAt] = useState<string | null>(null);
+  const [userDashboardsCachedAt, setUserDashboardsCachedAt] = useState<
+    string | null
+  >(null);
   const [userDashboardsPage, setUserDashboardsPage] = useState(0);
   const [userDashboardsSearch, setUserDashboardsSearch] = useState("");
   const [refreshingUser, setRefreshingUser] = useState<string | null>(null);
@@ -471,7 +476,9 @@ export default function Dashboard() {
     setUserDashboardsLoading(true);
     setUserDashboardsError("");
     try {
-      const res = await fetch(`/api/analytics/user-dashboards${force ? "?force=true" : ""}`);
+      const res = await fetch(
+        `/api/analytics/user-dashboards${force ? "?force=true" : ""}`,
+      );
       const json = await res.json();
       if (json.error) {
         setUserDashboardsError(json.error);
@@ -507,8 +514,8 @@ export default function Dashboard() {
                   fetched_at: json.fetched_at || new Date().toISOString(),
                   error: undefined,
                 }
-              : d
-          )
+              : d,
+          ),
         );
       }
     } catch (err) {
@@ -579,7 +586,12 @@ export default function Dashboard() {
         fetchUserDashboards();
       }
     }
-  }, [isAuthenticated, fetchPlatformStats, fetchUserDashboards, userDashboardsFetched]);
+  }, [
+    isAuthenticated,
+    fetchPlatformStats,
+    fetchUserDashboards,
+    userDashboardsFetched,
+  ]);
 
   // Handle authentication
   const handleAuthenticate = (password: string) => {
@@ -1102,10 +1114,16 @@ export default function Dashboard() {
                 <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div>
                     <h2 className="text-lg font-semibold text-[var(--foreground)]">
-                      Returning Users by Engagement
+                      Returning Users
                     </h2>
                     <p className="text-sm text-[var(--text-secondary)]">
-                      Users who came back after sign-up, sorted by days active
+                      Users who signed in on a different day than they joined —
+                      sorted by longest span between first &amp; last login
+                    </p>
+                    <p className="mt-1 text-xs text-[var(--text-tertiary)]">
+                      ⚠️ Firebase Auth only stores <strong>first login</strong>{" "}
+                      &amp; <strong>last login</strong>. Individual login
+                      counts/history are not available.
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
@@ -1136,120 +1154,66 @@ export default function Dashboard() {
                     <RefreshCw className="h-6 w-6 animate-spin text-[var(--accent-primary)]" />
                   </div>
                 ) : returningData && returningData.returningUsers.length > 0 ? (
-                  <div
-                    className="w-full overflow-y-auto"
-                    style={{
-                      height: Math.min(
-                        returningData.returningUsers.length * 36 + 60,
-                        600,
-                      ),
-                    }}
-                  >
-                    <ResponsiveContainer
-                      width="100%"
-                      height={returningData.returningUsers.length * 36 + 60}
-                    >
-                      <BarChart
-                        data={returningData.returningUsers}
-                        layout="vertical"
-                        margin={{ top: 10, right: 80, left: 10, bottom: 20 }}
-                      >
-                        <CartesianGrid
-                          strokeDasharray="3 3"
-                          horizontal={false}
-                          stroke={chartColors.grid}
-                        />
-                        <XAxis
-                          type="number"
-                          tick={{ fontSize: 12, fill: chartColors.text }}
-                          axisLine={{ stroke: chartColors.grid }}
-                          tickLine={false}
-                          label={{
-                            value: "Days Active",
-                            position: "insideBottom",
-                            offset: -10,
-                            fill: chartColors.text,
-                            style: { fontSize: 12, fontWeight: 500 },
-                          }}
-                        />
-                        <YAxis
-                          dataKey="email"
-                          type="category"
-                          tick={{ fontSize: 11, fill: chartColors.text }}
-                          axisLine={false}
-                          tickLine={false}
-                          width={200}
-                          tickFormatter={(email: string) =>
-                            email.length > 28
-                              ? email.slice(0, 25) + "..."
-                              : email
-                          }
-                        />
-                        <Tooltip
-                          cursor={{
-                            fill: theme === "dark" ? "#ffffff10" : "#00000005",
-                          }}
-                          contentStyle={{
-                            backgroundColor: chartColors.tooltipBg,
-                            borderColor: chartColors.tooltipBorder,
-                            borderRadius: "0.5rem",
-                            boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
-                            padding: "12px",
-                          }}
-                          labelStyle={{
-                            color: chartColors.text,
-                            fontWeight: 600,
-                            marginBottom: "8px",
-                            display: "block",
-                          }}
-                          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                          formatter={(value: any, _name: any, props: any) => {
-                            const user = props.payload as ReturningUser;
-                            return [
-                              `${value} days (Signed up: ${user.createdAt}, Last seen: ${user.lastSignIn})`,
-                              "Engagement",
-                            ];
-                          }}
-                        />
-                        <Bar
-                          dataKey="daysActive"
-                          radius={[0, 4, 4, 0]}
-                          maxBarSize={28}
-                        >
-                          {returningData.returningUsers.map((_entry, index) => {
-                            const ratio =
-                              1 -
-                              index /
-                                Math.max(
-                                  returningData.returningUsers.length - 1,
-                                  1,
-                                );
-                            const color =
-                              theme === "dark"
-                                ? `hsl(${160 + ratio * 40}, ${50 + ratio * 30}%, ${40 + ratio * 20}%)`
-                                : `hsl(${160 + ratio * 40}, ${50 + ratio * 25}%, ${30 + ratio * 15}%)`;
-                            return (
-                              <Cell
-                                key={`ret-${index}`}
-                                fill={color}
-                                fillOpacity={0.85}
-                              />
-                            );
-                          })}
-                          <LabelList
-                            dataKey="daysActive"
-                            position="right"
-                            style={{
-                              fontSize: 11,
-                              fill: chartColors.text,
-                              fontWeight: 500,
-                            }}
-                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                            formatter={(value: any) => `${value}d`}
-                          />
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
+                  <div className="w-full overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-[var(--border)] text-left">
+                          <th className="pb-3 pr-4 font-medium text-[var(--text-secondary)] w-8">
+                            #
+                          </th>
+                          <th className="pb-3 pr-4 font-medium text-[var(--text-secondary)]">
+                            Email
+                          </th>
+                          <th className="pb-3 pr-4 font-medium text-[var(--text-secondary)] whitespace-nowrap">
+                            First Login
+                          </th>
+                          <th className="pb-3 pr-4 font-medium text-[var(--text-secondary)] whitespace-nowrap">
+                            Last Login
+                          </th>
+                          <th className="pb-3 font-medium text-[var(--text-secondary)] whitespace-nowrap text-right">
+                            Span (days)
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[var(--border)]">
+                        {returningData.returningUsers.map((user, index) => (
+                          <tr
+                            key={user.email}
+                            className="group hover:bg-[var(--background-hover)] transition-colors"
+                          >
+                            <td className="py-2.5 pr-4 text-xs text-[var(--text-tertiary)]">
+                              {index + 1}
+                            </td>
+                            <td className="py-2.5 pr-4 font-mono text-xs text-[var(--foreground)] max-w-[240px] truncate">
+                              {user.email}
+                            </td>
+                            <td className="py-2.5 pr-4 text-xs text-[var(--text-secondary)] whitespace-nowrap">
+                              {user.firstLogin}
+                            </td>
+                            <td className="py-2.5 pr-4 text-xs text-[var(--text-secondary)] whitespace-nowrap">
+                              {user.lastLogin}
+                            </td>
+                            <td className="py-2.5 text-right">
+                              <span
+                                className="inline-flex items-center justify-center rounded-full px-2.5 py-0.5 text-xs font-semibold"
+                                style={{
+                                  background:
+                                    theme === "dark"
+                                      ? `hsl(${160 + Math.min(user.loginSpanDays / 5, 1) * 40}, 45%, 25%)`
+                                      : `hsl(${160 + Math.min(user.loginSpanDays / 5, 1) * 40}, 55%, 88%)`,
+                                  color:
+                                    theme === "dark"
+                                      ? `hsl(${160 + Math.min(user.loginSpanDays / 5, 1) * 40}, 55%, 70%)`
+                                      : `hsl(${160 + Math.min(user.loginSpanDays / 5, 1) * 40}, 50%, 30%)`,
+                                }}
+                              >
+                                {user.loginSpanDays}d
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 ) : (
                   <div className="flex flex-col items-center justify-center h-40 text-[var(--text-tertiary)]">
@@ -1304,13 +1268,48 @@ export default function Dashboard() {
                     {/* Stats Grid */}
                     <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-4">
                       {[
-                        { label: "Users", value: platformStats.users, icon: Users, color: "var(--accent-primary)" },
-                        { label: "Logins", value: platformStats.logins, icon: LogIn, color: "var(--success)" },
-                        { label: "Papers", value: platformStats.papers, icon: FileText, color: "var(--info)" },
-                        { label: "Videos", value: platformStats.videos, icon: Video, color: "var(--warning)" },
-                        { label: "Reels", value: platformStats.reels, icon: Film, color: "#a855f7" },
-                        { label: "Podcasts", value: platformStats.podcasts, icon: Mic, color: "#ec4899" },
-                        { label: "Posters", value: platformStats.posters, icon: Image, color: "#14b8a6" },
+                        {
+                          label: "Users",
+                          value: platformStats.users,
+                          icon: Users,
+                          color: "var(--accent-primary)",
+                        },
+                        {
+                          label: "Logins",
+                          value: platformStats.logins,
+                          icon: LogIn,
+                          color: "var(--success)",
+                        },
+                        {
+                          label: "Papers",
+                          value: platformStats.papers,
+                          icon: FileText,
+                          color: "var(--info)",
+                        },
+                        {
+                          label: "Videos",
+                          value: platformStats.videos,
+                          icon: Video,
+                          color: "var(--warning)",
+                        },
+                        {
+                          label: "Reels",
+                          value: platformStats.reels,
+                          icon: Film,
+                          color: "#a855f7",
+                        },
+                        {
+                          label: "Podcasts",
+                          value: platformStats.podcasts,
+                          icon: Mic,
+                          color: "#ec4899",
+                        },
+                        {
+                          label: "Posters",
+                          value: platformStats.posters,
+                          icon: Image,
+                          color: "#14b8a6",
+                        },
                       ].map((stat) => {
                         const IconComp = stat.icon;
                         return (
@@ -1343,11 +1342,33 @@ export default function Dashboard() {
                           <PieChart>
                             <Pie
                               data={[
-                                { name: "Papers", value: platformStats.papers, fill: theme === "dark" ? "#5b9fff" : "#0288d1" },
-                                { name: "Videos", value: platformStats.videos, fill: theme === "dark" ? "#ffb020" : "#f57c00" },
-                                { name: "Reels", value: platformStats.reels, fill: "#a855f7" },
-                                { name: "Podcasts", value: platformStats.podcasts, fill: "#ec4899" },
-                                { name: "Posters", value: platformStats.posters, fill: "#14b8a6" },
+                                {
+                                  name: "Papers",
+                                  value: platformStats.papers,
+                                  fill:
+                                    theme === "dark" ? "#5b9fff" : "#0288d1",
+                                },
+                                {
+                                  name: "Videos",
+                                  value: platformStats.videos,
+                                  fill:
+                                    theme === "dark" ? "#ffb020" : "#f57c00",
+                                },
+                                {
+                                  name: "Reels",
+                                  value: platformStats.reels,
+                                  fill: "#a855f7",
+                                },
+                                {
+                                  name: "Podcasts",
+                                  value: platformStats.podcasts,
+                                  fill: "#ec4899",
+                                },
+                                {
+                                  name: "Posters",
+                                  value: platformStats.posters,
+                                  fill: "#14b8a6",
+                                },
                               ].filter((d) => d.value > 0)}
                               cx="50%"
                               cy="50%"
@@ -1389,7 +1410,8 @@ export default function Dashboard() {
                       Per-user paper and output analytics
                       {userDashboardsCachedAt && (
                         <span className="ml-2 text-xs text-[var(--text-tertiary)]">
-                          (cached: {new Date(userDashboardsCachedAt).toLocaleString()})
+                          (cached:{" "}
+                          {new Date(userDashboardsCachedAt).toLocaleString()})
                         </span>
                       )}
                     </p>
@@ -1436,7 +1458,8 @@ export default function Dashboard() {
                   <div className="flex flex-col items-center justify-center h-40">
                     <RefreshCw className="h-6 w-6 animate-spin text-[var(--accent-primary)] mb-3" />
                     <p className="text-sm text-[var(--text-secondary)]">
-                      Fetching user dashboards... This may take a while for the first time.
+                      Fetching user dashboards... This may take a while for the
+                      first time.
                     </p>
                   </div>
                 ) : userDashboardsError ? (
@@ -1450,14 +1473,14 @@ export default function Dashboard() {
                     const filtered = userDashboards.filter((d) =>
                       d.email
                         .toLowerCase()
-                        .includes(userDashboardsSearch.toLowerCase())
+                        .includes(userDashboardsSearch.toLowerCase()),
                     );
                     const totalPages = Math.ceil(
-                      filtered.length / ITEMS_PER_PAGE
+                      filtered.length / ITEMS_PER_PAGE,
                     );
                     const paged = filtered.slice(
                       userDashboardsPage * ITEMS_PER_PAGE,
-                      (userDashboardsPage + 1) * ITEMS_PER_PAGE
+                      (userDashboardsPage + 1) * ITEMS_PER_PAGE,
                     );
 
                     return (
@@ -1483,13 +1506,13 @@ export default function Dashboard() {
                                 className={cn(
                                   "grid grid-cols-1 sm:grid-cols-12 gap-2 sm:gap-4 px-4 py-3 text-sm transition-colors cursor-pointer hover:bg-[var(--background-hover)]",
                                   expandedUser === user.user_id &&
-                                    "bg-[var(--background-tertiary)]"
+                                    "bg-[var(--background-tertiary)]",
                                 )}
                                 onClick={() =>
                                   setExpandedUser(
                                     expandedUser === user.user_id
                                       ? null
-                                      : user.user_id
+                                      : user.user_id,
                                   )
                                 }
                               >
@@ -1519,23 +1542,33 @@ export default function Dashboard() {
 
                                 {/* Stats */}
                                 <div className="sm:col-span-1 text-center text-[var(--text-secondary)]">
-                                  <span className="sm:hidden text-xs text-[var(--text-tertiary)]">Papers: </span>
+                                  <span className="sm:hidden text-xs text-[var(--text-tertiary)]">
+                                    Papers:{" "}
+                                  </span>
                                   {user.total_papers}
                                 </div>
                                 <div className="sm:col-span-1 text-center text-[var(--text-secondary)]">
-                                  <span className="sm:hidden text-xs text-[var(--text-tertiary)]">Videos: </span>
+                                  <span className="sm:hidden text-xs text-[var(--text-tertiary)]">
+                                    Videos:{" "}
+                                  </span>
                                   {user.total_outputs?.video || 0}
                                 </div>
                                 <div className="sm:col-span-1 text-center text-[var(--text-secondary)]">
-                                  <span className="sm:hidden text-xs text-[var(--text-tertiary)]">Reels: </span>
+                                  <span className="sm:hidden text-xs text-[var(--text-tertiary)]">
+                                    Reels:{" "}
+                                  </span>
                                   {user.total_outputs?.reels || 0}
                                 </div>
                                 <div className="sm:col-span-1 text-center text-[var(--text-secondary)]">
-                                  <span className="sm:hidden text-xs text-[var(--text-tertiary)]">Podcasts: </span>
+                                  <span className="sm:hidden text-xs text-[var(--text-tertiary)]">
+                                    Podcasts:{" "}
+                                  </span>
                                   {user.total_outputs?.podcast || 0}
                                 </div>
                                 <div className="sm:col-span-1 text-center text-[var(--text-secondary)]">
-                                  <span className="sm:hidden text-xs text-[var(--text-tertiary)]">Posters: </span>
+                                  <span className="sm:hidden text-xs text-[var(--text-tertiary)]">
+                                    Posters:{" "}
+                                  </span>
                                   {user.total_outputs?.poster || 0}
                                 </div>
 
@@ -1569,23 +1602,24 @@ export default function Dashboard() {
                               {expandedUser === user.user_id && (
                                 <div className="px-4 pb-4 pt-2 bg-[var(--background-tertiary)]/50">
                                   {/* Papers by Source */}
-                                  {Object.keys(user.papers_by_source || {}).length > 0 && (
+                                  {Object.keys(user.papers_by_source || {})
+                                    .length > 0 && (
                                     <div className="mb-4">
                                       <p className="text-xs font-semibold text-[var(--text-secondary)] mb-2 uppercase tracking-wider">
                                         Papers by Source
                                       </p>
                                       <div className="flex flex-wrap gap-2">
-                                        {Object.entries(user.papers_by_source).map(
-                                          ([source, count]) => (
-                                            <span
-                                              key={source}
-                                              className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--background-secondary)] px-3 py-1 text-xs font-medium text-[var(--text-secondary)]"
-                                            >
-                                              <FileText className="h-3 w-3" />
-                                              {source}: {count}
-                                            </span>
-                                          )
-                                        )}
+                                        {Object.entries(
+                                          user.papers_by_source,
+                                        ).map(([source, count]) => (
+                                          <span
+                                            key={source}
+                                            className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--background-secondary)] px-3 py-1 text-xs font-medium text-[var(--text-secondary)]"
+                                          >
+                                            <FileText className="h-3 w-3" />
+                                            {source}: {count}
+                                          </span>
+                                        ))}
                                       </div>
                                     </div>
                                   )}
@@ -1603,7 +1637,10 @@ export default function Dashboard() {
                                             className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-lg border border-[var(--border)] bg-[var(--background-secondary)] px-3 py-2"
                                           >
                                             <div className="flex-1 min-w-0">
-                                              <p className="text-sm font-medium text-[var(--foreground)] truncate" title={paper.title}>
+                                              <p
+                                                className="text-sm font-medium text-[var(--foreground)] truncate"
+                                                title={paper.title}
+                                              >
                                                 {paper.title}
                                               </p>
                                               <div className="flex flex-wrap items-center gap-2 mt-1">
@@ -1611,7 +1648,9 @@ export default function Dashboard() {
                                                   {paper.source_type}
                                                 </span>
                                                 <span className="text-[10px] text-[var(--text-tertiary)]">
-                                                  {new Date(paper.created_at).toLocaleDateString()}
+                                                  {new Date(
+                                                    paper.created_at,
+                                                  ).toLocaleDateString()}
                                                 </span>
                                                 {paper.outputs.map((output) => (
                                                   <span
@@ -1628,7 +1667,7 @@ export default function Dashboard() {
                                                 "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium",
                                                 paper.status === "uploaded"
                                                   ? "bg-[var(--success)]/10 text-[var(--success)]"
-                                                  : "bg-[var(--warning)]/10 text-[var(--warning)]"
+                                                  : "bg-[var(--warning)]/10 text-[var(--warning)]",
                                               )}
                                             >
                                               {paper.status}
@@ -1642,7 +1681,10 @@ export default function Dashboard() {
                                   {/* Fetched at */}
                                   {user.fetched_at && (
                                     <p className="mt-3 text-[10px] text-[var(--text-tertiary)]">
-                                      Last fetched: {new Date(user.fetched_at).toLocaleString()}
+                                      Last fetched:{" "}
+                                      {new Date(
+                                        user.fetched_at,
+                                      ).toLocaleString()}
                                     </p>
                                   )}
                                 </div>
@@ -1658,7 +1700,7 @@ export default function Dashboard() {
                               Showing {userDashboardsPage * ITEMS_PER_PAGE + 1}–
                               {Math.min(
                                 (userDashboardsPage + 1) * ITEMS_PER_PAGE,
-                                filtered.length
+                                filtered.length,
                               )}{" "}
                               of {filtered.length}
                             </p>
@@ -1668,7 +1710,7 @@ export default function Dashboard() {
                                 size="sm"
                                 onClick={() =>
                                   setUserDashboardsPage((p) =>
-                                    Math.max(0, p - 1)
+                                    Math.max(0, p - 1),
                                   )
                                 }
                                 disabled={userDashboardsPage === 0}
@@ -1680,12 +1722,10 @@ export default function Dashboard() {
                                 size="sm"
                                 onClick={() =>
                                   setUserDashboardsPage((p) =>
-                                    Math.min(totalPages - 1, p + 1)
+                                    Math.min(totalPages - 1, p + 1),
                                   )
                                 }
-                                disabled={
-                                  userDashboardsPage >= totalPages - 1
-                                }
+                                disabled={userDashboardsPage >= totalPages - 1}
                               >
                                 Next
                               </Button>

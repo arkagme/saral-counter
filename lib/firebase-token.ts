@@ -4,16 +4,12 @@ import admin from "./firebase-admin";
 let cachedToken: string | null = null;
 let tokenExpiry: number = 0;
 
-// Service UID used to generate custom tokens
+// Service UID used to generate custom tokens for platform-wide endpoints
 const SERVICE_UID = "saral-analytics-service";
 
 /**
- * Get a Firebase ID token for server-to-server API calls.
- * 
- * Flow:
- * 1. Create a custom token using Firebase Admin SDK
- * 2. Exchange it for an ID token via Firebase Auth REST API
- * 3. Cache the token in memory (auto-refresh 5 min before expiry)
+ * Get a Firebase ID token for platform-wide API calls (no user context needed).
+ * Uses a service UID. Cached in memory with auto-refresh.
  */
 export async function getFirebaseIdToken(): Promise<string> {
   const now = Date.now();
@@ -64,4 +60,41 @@ export async function getFirebaseIdToken(): Promise<string> {
     tokenExpiry = 0;
     throw error;
   }
+}
+
+/**
+ * Get a Firebase ID token for a SPECIFIC user.
+ * The external API enforces that the bearer token's UID must match
+ * the user_id in the URL, so we impersonate each user.
+ * NOT cached — each call generates a fresh token.
+ */
+export async function getFirebaseIdTokenForUser(uid: string): Promise<string> {
+  const apiKey = process.env.FIREBASE_API_KEY;
+  if (!apiKey) {
+    throw new Error("FIREBASE_API_KEY environment variable is not set");
+  }
+
+  const customToken = await admin.auth().createCustomToken(uid);
+
+  const response = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        token: customToken,
+        returnSecureToken: true,
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(
+      `Failed to exchange token for user ${uid}: ${errorData.error?.message || response.statusText}`
+    );
+  }
+
+  const data = await response.json();
+  return data.idToken;
 }

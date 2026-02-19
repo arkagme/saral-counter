@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import admin from "@/lib/firebase-admin";
-import { getFirebaseIdToken } from "@/lib/firebase-token";
+import { getFirebaseIdTokenForUser } from "@/lib/firebase-token";
 
 export const maxDuration = 30;
 
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const token = await getFirebaseIdToken();
+    const token = await getFirebaseIdTokenForUser(userId);
 
     const response = await fetch(`${USER_DASHBOARD_URL}/${userId}/dashboard`, {
       headers: {

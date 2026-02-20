@@ -39,7 +39,7 @@ async function getReturningUsers(): Promise<{
   try {
     do {
       const listUsersResult = await admin.auth().listUsers(1000, pageToken);
-      totalUsers += listUsersResult.users.length;
+      totalUsers += listUsersResult.users.filter((u) => u.email).length;
 
       listUsersResult.users.forEach((user) => {
         if (!user.email) return;

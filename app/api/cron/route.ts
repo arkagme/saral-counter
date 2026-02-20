@@ -22,7 +22,7 @@ async function getUserCount() {
   try {
     do {
       const listUsersResult = await admin.auth().listUsers(1000, pageToken);
-      count += listUsersResult.users.length;
+      count += listUsersResult.users.filter((u) => u.email).length;
       pageToken = listUsersResult.pageToken;
     } while (pageToken);
 

@@ -57,7 +57,7 @@ async function getAllUsers() {
   try {
     do {
       const listUsersResult = await admin.auth().listUsers(1000, pageToken);
-      allUsers.push(...listUsersResult.users);
+      allUsers.push(...listUsersResult.users.filter((u) => u.email));
       pageToken = listUsersResult.pageToken;
     } while (pageToken);
 

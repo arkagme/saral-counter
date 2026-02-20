@@ -28,6 +28,7 @@ async function getAllUsersWithCreationDates() {
       const listUsersResult = await admin.auth().listUsers(1000, pageToken);
 
       listUsersResult.users.forEach((user) => {
+        if (!user.email) return; // skip service accounts without email
         // Get user creation date (metadata.creationTime is ISO string)
         const creationDate = new Date(user.metadata.creationTime);
         const dateKey = creationDate.toISOString().split("T")[0]; // YYYY-MM-DD format

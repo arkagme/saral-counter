@@ -356,6 +356,15 @@ export default function Dashboard() {
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
   const [userDashboardsFetched, setUserDashboardsFetched] = useState(false);
 
+  // Tally check state
+  const [syncingCache, setSyncingCache] = useState(false);
+  const [syncResult, setSyncResult] = useState<{
+    synced: boolean;
+    mismatches: number;
+    fixed: number;
+    errors: number;
+  } | null>(null);
+
   // Fuse.js fuzzy search instance for email search
   const fuse = useMemo(
     () =>
@@ -1440,6 +1449,78 @@ export default function Dashboard() {
                         {userDashboards.length} users
                       </div>
                     )}
+
+                    {/* Tally check indicator */}
+                    {userDashboards.length > 0 && platformStats && (() => {
+                      const cacheTotals = userDashboards.reduce(
+                        (acc, u) => ({
+                          papers: acc.papers + (u.total_papers || 0),
+                          videos: acc.videos + (u.total_outputs?.video || 0),
+                          reels: acc.reels + (u.total_outputs?.reels || 0),
+                          podcasts: acc.podcasts + (u.total_outputs?.podcast || 0),
+                          posters: acc.posters + (u.total_outputs?.poster || 0),
+                        }),
+                        { papers: 0, videos: 0, reels: 0, podcasts: 0, posters: 0 }
+                      );
+                      const isSynced =
+                        cacheTotals.papers === platformStats.papers &&
+                        cacheTotals.videos === platformStats.videos &&
+                        cacheTotals.reels === platformStats.reels &&
+                        cacheTotals.podcasts === platformStats.podcasts &&
+                        cacheTotals.posters === platformStats.posters;
+
+                      return (
+                        <div className="inline-flex items-center gap-1.5">
+                          <div
+                            className={`h-2 w-2 rounded-full transition-colors ${
+                              isSynced
+                                ? "bg-[var(--success)] shadow-[0_0_4px_var(--success)]"
+                                : "bg-[var(--error)] shadow-[0_0_4px_var(--error)] animate-pulse"
+                            }`}
+                            title={
+                              isSynced
+                                ? "Cache is in sync with platform"
+                                : `Out of sync — Cache: Pa${cacheTotals.papers}/V${cacheTotals.videos}/R${cacheTotals.reels}/Po${cacheTotals.podcasts}/Pr${cacheTotals.posters} vs Platform: Pa${platformStats.papers}/V${platformStats.videos}/R${platformStats.reels}/Po${platformStats.podcasts}/Pr${platformStats.posters}`
+                            }
+                          />
+                          {!isSynced && (
+                            <button
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                setSyncingCache(true);
+                                setSyncResult(null);
+                                try {
+                                  const res = await fetch("/api/analytics/sync-cache", {
+                                    method: "POST",
+                                  });
+                                  const json = await res.json();
+                                  setSyncResult(json);
+                                  if (json.synced || json.fixed > 0) {
+                                    // Re-fetch dashboards to show updated data
+                                    await fetchUserDashboards();
+                                  }
+                                } catch (err) {
+                                  console.error("Sync failed:", err);
+                                } finally {
+                                  setSyncingCache(false);
+                                }
+                              }}
+                              disabled={syncingCache}
+                              className="text-[10px] font-medium text-[var(--error)] hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
+                              title={syncResult ? `Fixed ${syncResult.fixed}/${syncResult.mismatches}` : "Sync cache with platform data"}
+                            >
+                              {syncingCache ? "Syncing…" : "Sync"}
+                            </button>
+                          )}
+                          {syncResult && syncResult.fixed > 0 && (
+                            <span className="text-[10px] text-[var(--success)]">
+                              ✓ {syncResult.fixed} fixed
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
+
                     <Button
                       variant="outline"
                       size="sm"

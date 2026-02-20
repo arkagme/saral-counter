@@ -58,6 +58,8 @@ export async function GET(request: NextRequest) {
       if (doc.exists) {
         // Find which chunk contains this user and update it
         const chunksSnapshot = await docRef.collection("chunks").get();
+        let found = false;
+
         for (const chunkDoc of chunksSnapshot.docs) {
           const chunkData = chunkDoc.data();
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -76,12 +78,51 @@ export async function GET(request: NextRequest) {
               error: undefined,
             };
             await chunkDoc.ref.set({ dashboards });
+            found = true;
+            console.log(`[user-dashboard] Updated cache for ${userId} in ${chunkDoc.id}`);
             break;
+          }
+        }
+
+        // User not in any chunk — append to last chunk
+        if (!found) {
+          console.warn(`[user-dashboard] User ${userId} not in any cache chunk, appending...`);
+          const lastChunkDoc = chunksSnapshot.docs[chunksSnapshot.docs.length - 1];
+          if (lastChunkDoc) {
+            const lastChunkData = lastChunkDoc.data();
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const dashboards = lastChunkData.dashboards as any[];
+            const newEntry = {
+              user_id: userId,
+              email: data.email || "",
+              total_papers: data.total_papers || 0,
+              papers_by_source: data.papers_by_source || {},
+              total_outputs: data.total_outputs || {},
+              papers: data.papers || [],
+              fetched_at: new Date().toISOString(),
+            };
+
+            if (dashboards.length < 100) {
+              dashboards.push(newEntry);
+              await lastChunkDoc.ref.set({ dashboards });
+            } else {
+              const newChunkIndex = chunksSnapshot.docs.length;
+              await docRef
+                .collection("chunks")
+                .doc(`chunk_${newChunkIndex}`)
+                .set({ dashboards: [newEntry] });
+            }
+
+            await docRef.update({
+              total_users: (doc.data()?.total_users || 0) + 1,
+              cached_at: new Date().toISOString(),
+            });
+            console.log(`[user-dashboard] Appended new user ${userId} to cache`);
           }
         }
       }
     } catch (cacheError) {
-      console.error("Error updating cache:", cacheError);
+      console.error("[user-dashboard] Error updating cache:", cacheError);
       // Don't fail the request if cache update fails
     }
 

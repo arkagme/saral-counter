@@ -24,7 +24,7 @@ const FIRESTORE_DOC = "user_dashboards";
  *   "secret": "<DASHBOARD_WEBHOOK_SECRET>",
  *   "user_id": "<firebase_uid>",
  *   "email": "<user_email>",
- *   "event": "paper_uploaded | video_generated | reel_generated | podcast_generated | poster_generated",
+ *   "event": "user_login | paper_uploaded | video_generated | reel_generated | podcast_generated | poster_generated",
  *   "timestamp": "<ISO 8601>",
  *   "data": { ... optional ... }
  * }
@@ -67,37 +67,61 @@ export async function POST(request: NextRequest) {
 
   // 3. Re-fetch the user's dashboard from the external API
   try {
-    const token = await getFirebaseIdTokenForUser(user_id);
+    let dashboardData = {
+      total_papers: 0,
+      papers_by_source: {},
+      total_outputs: {},
+      papers: [],
+    };
 
-    const response = await fetch(
-      `${USER_DASHBOARD_URL}/${user_id}/dashboard`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        cache: "no-store",
-      }
-    );
+    try {
+      const token = await getFirebaseIdTokenForUser(user_id);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(
-        `[cache-update] External API error for ${user_id}:`,
-        response.status,
-        errorText
-      );
-      return NextResponse.json(
+      const response = await fetch(
+        `${USER_DASHBOARD_URL}/${user_id}/dashboard`,
         {
-          error: `External API returned ${response.status}`,
-          user_id,
-          event,
-        },
-        { status: 502 }
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          cache: "no-store",
+        }
+      );
+
+      if (response.ok) {
+        dashboardData = await response.json();
+      } else {
+        const errorText = await response.text();
+        console.warn(
+          `[cache-update] External API returned ${response.status} for ${user_id}: ${errorText}`
+        );
+
+        // For non-login events, the data should exist — treat API errors as failures
+        if (event !== "user_login") {
+          return NextResponse.json(
+            {
+              error: `External API returned ${response.status}`,
+              user_id,
+              event,
+            },
+            { status: 502 }
+          );
+        }
+        // For user_login events, proceed with blank data — user is brand new
+        console.log(
+          `[cache-update] New user login — creating blank cache entry for ${email || user_id}`
+        );
+      }
+    } catch (fetchError) {
+      // If token generation or fetch fails for a login event, still create blank entry
+      if (event !== "user_login") {
+        throw fetchError;
+      }
+      console.warn(
+        `[cache-update] Could not fetch dashboard for new user ${email || user_id}, creating blank entry`
       );
     }
 
-    const dashboardData = await response.json();
     const updatedEntry = {
       user_id,
       email: email || "",

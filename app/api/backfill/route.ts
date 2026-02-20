@@ -112,13 +112,13 @@ export async function GET(request: Request) {
     // Create a map for quick lookup
     const mergedMap = new Map<string, number>();
 
-    // Add all historical data (from Firebase backfill)
-    historicalData.forEach((entry) => {
+    // Add existing cron data first
+    existingHistory.forEach((entry) => {
       mergedMap.set(entry.date, entry.count);
     });
 
-    // Override with existing cron data (cron data is more recent and accurate)
-    existingHistory.forEach((entry) => {
+    // Override with fresh backfill data (recalculated from Firebase Auth)
+    historicalData.forEach((entry) => {
       mergedMap.set(entry.date, entry.count);
     });
 

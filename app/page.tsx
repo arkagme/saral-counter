@@ -1483,61 +1483,62 @@ export default function Dashboard() {
                           cacheTotals.podcasts === platformStats.podcasts &&
                           cacheTotals.posters === platformStats.posters;
 
+                        const syncHandler = async (e: React.MouseEvent) => {
+                          e.stopPropagation();
+                          setSyncingCache(true);
+                          setSyncResult(null);
+                          try {
+                            const res = await fetch(
+                              "/api/analytics/sync-cache",
+                              { method: "POST" },
+                            );
+                            const json = await res.json();
+                            setSyncResult(json);
+                            if (
+                              json.synced ||
+                              json.fixed > 0 ||
+                              json.emailsHealed > 0
+                            ) {
+                              await fetchUserDashboards();
+                            }
+                          } catch (err) {
+                            console.error("Sync failed:", err);
+                          } finally {
+                            setSyncingCache(false);
+                          }
+                        };
+
                         return (
                           <div className="inline-flex items-center gap-1.5">
-                            <div
-                              className={`h-2 w-2 rounded-full transition-colors ${
-                                isSynced
-                                  ? "bg-[var(--success)] shadow-[0_0_4px_var(--success)]"
-                                  : "bg-[var(--error)] shadow-[0_0_4px_var(--error)] animate-pulse"
-                              }`}
-                              title={
-                                isSynced
-                                  ? "Cache is in sync with platform"
-                                  : `Out of sync — Cache: Pa${cacheTotals.papers}/V${cacheTotals.videos}/R${cacheTotals.reels}/Po${cacheTotals.podcasts}/Pr${cacheTotals.posters} vs Platform: Pa${platformStats.papers}/V${platformStats.videos}/R${platformStats.reels}/Po${platformStats.podcasts}/Pr${platformStats.posters}`
-                              }
-                            />
-                            {!isSynced && (
+                            {/* Dot — red = clickable to sync (original behaviour), green = status only */}
+                            {isSynced ? (
+                              <div
+                                className="h-2 w-2 rounded-full bg-[var(--success)] shadow-[0_0_4px_var(--success)] transition-colors"
+                                title="Cache is in sync with platform"
+                              />
+                            ) : (
                               <button
-                                onClick={async (e) => {
-                                  e.stopPropagation();
-                                  setSyncingCache(true);
-                                  setSyncResult(null);
-                                  try {
-                                    const res = await fetch(
-                                      "/api/analytics/sync-cache",
-                                      {
-                                        method: "POST",
-                                      },
-                                    );
-                                    const json = await res.json();
-                                    setSyncResult(json);
-                                    if (json.synced || json.fixed > 0) {
-                                      // Re-fetch dashboards to show updated data
-                                      await fetchUserDashboards();
-                                    }
-                                  } catch (err) {
-                                    console.error("Sync failed:", err);
-                                  } finally {
-                                    setSyncingCache(false);
-                                  }
-                                }}
+                                onClick={syncHandler}
                                 disabled={syncingCache}
-                                className="text-[10px] font-medium text-[var(--error)] hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
-                                title={
-                                  syncResult
-                                    ? `Fixed ${syncResult.fixed}/${syncResult.mismatches}`
-                                    : "Sync cache with platform data"
-                                }
-                              >
-                                {syncingCache ? "Syncing…" : "Sync"}
-                              </button>
+                                className="h-2 w-2 rounded-full bg-[var(--error)] shadow-[0_0_4px_var(--error)] animate-pulse disabled:opacity-50 cursor-pointer"
+                                title={`Out of sync — Cache: Pa${cacheTotals.papers}/V${cacheTotals.videos}/R${cacheTotals.reels}/Po${cacheTotals.podcasts}/Pr${cacheTotals.posters} vs Platform: Pa${platformStats.papers}/V${platformStats.videos}/R${platformStats.reels}/Po${platformStats.podcasts}/Pr${platformStats.posters} — click to sync`}
+                              />
                             )}
-                            {syncResult && syncResult.fixed > 0 && (
-                              <span className="text-[10px] text-[var(--success)]">
-                                ✓ {syncResult.fixed} fixed
-                              </span>
-                            )}
+                            {/* Tiny always-visible manual sync icon (for email heals even when green) */}
+                            <button
+                              onClick={syncHandler}
+                              disabled={syncingCache}
+                              className="opacity-20 hover:opacity-60 transition-opacity disabled:opacity-10"
+                              title={
+                                syncResult
+                                  ? `Fixed ${syncResult.fixed}/${syncResult.mismatches}${(syncResult as any).emailsHealed ? `, healed ${(syncResult as any).emailsHealed} emails` : ""}`
+                                  : "Sync cache"
+                              }
+                            >
+                              <RefreshCw
+                                className={`h-2 w-2 text-[var(--text-secondary)] ${syncingCache ? "animate-spin" : ""}`}
+                              />
+                            </button>
                           </div>
                         );
                       })()}

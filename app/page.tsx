@@ -529,6 +529,9 @@ export default function Dashboard() {
             d.user_id === userId
               ? {
                   ...d,
+                  // Heal email: if backend echoes a non-empty email, use it;
+                  // otherwise keep whatever is already in state
+                  email: json.email || d.email,
                   total_papers: json.total_papers || 0,
                   papers_by_source: json.papers_by_source || {},
                   total_outputs: json.total_outputs || {},
@@ -1452,75 +1455,92 @@ export default function Dashboard() {
                     )}
 
                     {/* Tally check indicator */}
-                    {userDashboards.length > 0 && platformStats && (() => {
-                      const cacheTotals = userDashboards.reduce(
-                        (acc, u) => ({
-                          papers: acc.papers + (u.total_papers || 0),
-                          videos: acc.videos + (u.total_outputs?.video || 0),
-                          reels: acc.reels + (u.total_outputs?.reels || 0),
-                          podcasts: acc.podcasts + (u.total_outputs?.podcast || 0),
-                          posters: acc.posters + (u.total_outputs?.poster || 0),
-                        }),
-                        { papers: 0, videos: 0, reels: 0, podcasts: 0, posters: 0 }
-                      );
-                      const isSynced =
-                        cacheTotals.papers === platformStats.papers &&
-                        cacheTotals.videos === platformStats.videos &&
-                        cacheTotals.reels === platformStats.reels &&
-                        cacheTotals.podcasts === platformStats.podcasts &&
-                        cacheTotals.posters === platformStats.posters;
+                    {userDashboards.length > 0 &&
+                      platformStats &&
+                      (() => {
+                        const cacheTotals = userDashboards.reduce(
+                          (acc, u) => ({
+                            papers: acc.papers + (u.total_papers || 0),
+                            videos: acc.videos + (u.total_outputs?.video || 0),
+                            reels: acc.reels + (u.total_outputs?.reels || 0),
+                            podcasts:
+                              acc.podcasts + (u.total_outputs?.podcast || 0),
+                            posters:
+                              acc.posters + (u.total_outputs?.poster || 0),
+                          }),
+                          {
+                            papers: 0,
+                            videos: 0,
+                            reels: 0,
+                            podcasts: 0,
+                            posters: 0,
+                          },
+                        );
+                        const isSynced =
+                          cacheTotals.papers === platformStats.papers &&
+                          cacheTotals.videos === platformStats.videos &&
+                          cacheTotals.reels === platformStats.reels &&
+                          cacheTotals.podcasts === platformStats.podcasts &&
+                          cacheTotals.posters === platformStats.posters;
 
-                      return (
-                        <div className="inline-flex items-center gap-1.5">
-                          <div
-                            className={`h-2 w-2 rounded-full transition-colors ${
-                              isSynced
-                                ? "bg-[var(--success)] shadow-[0_0_4px_var(--success)]"
-                                : "bg-[var(--error)] shadow-[0_0_4px_var(--error)] animate-pulse"
-                            }`}
-                            title={
-                              isSynced
-                                ? "Cache is in sync with platform"
-                                : `Out of sync — Cache: Pa${cacheTotals.papers}/V${cacheTotals.videos}/R${cacheTotals.reels}/Po${cacheTotals.podcasts}/Pr${cacheTotals.posters} vs Platform: Pa${platformStats.papers}/V${platformStats.videos}/R${platformStats.reels}/Po${platformStats.podcasts}/Pr${platformStats.posters}`
-                            }
-                          />
-                          {!isSynced && (
-                            <button
-                              onClick={async (e) => {
-                                e.stopPropagation();
-                                setSyncingCache(true);
-                                setSyncResult(null);
-                                try {
-                                  const res = await fetch("/api/analytics/sync-cache", {
-                                    method: "POST",
-                                  });
-                                  const json = await res.json();
-                                  setSyncResult(json);
-                                  if (json.synced || json.fixed > 0) {
-                                    // Re-fetch dashboards to show updated data
-                                    await fetchUserDashboards();
+                        return (
+                          <div className="inline-flex items-center gap-1.5">
+                            <div
+                              className={`h-2 w-2 rounded-full transition-colors ${
+                                isSynced
+                                  ? "bg-[var(--success)] shadow-[0_0_4px_var(--success)]"
+                                  : "bg-[var(--error)] shadow-[0_0_4px_var(--error)] animate-pulse"
+                              }`}
+                              title={
+                                isSynced
+                                  ? "Cache is in sync with platform"
+                                  : `Out of sync — Cache: Pa${cacheTotals.papers}/V${cacheTotals.videos}/R${cacheTotals.reels}/Po${cacheTotals.podcasts}/Pr${cacheTotals.posters} vs Platform: Pa${platformStats.papers}/V${platformStats.videos}/R${platformStats.reels}/Po${platformStats.podcasts}/Pr${platformStats.posters}`
+                              }
+                            />
+                            {!isSynced && (
+                              <button
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  setSyncingCache(true);
+                                  setSyncResult(null);
+                                  try {
+                                    const res = await fetch(
+                                      "/api/analytics/sync-cache",
+                                      {
+                                        method: "POST",
+                                      },
+                                    );
+                                    const json = await res.json();
+                                    setSyncResult(json);
+                                    if (json.synced || json.fixed > 0) {
+                                      // Re-fetch dashboards to show updated data
+                                      await fetchUserDashboards();
+                                    }
+                                  } catch (err) {
+                                    console.error("Sync failed:", err);
+                                  } finally {
+                                    setSyncingCache(false);
                                   }
-                                } catch (err) {
-                                  console.error("Sync failed:", err);
-                                } finally {
-                                  setSyncingCache(false);
+                                }}
+                                disabled={syncingCache}
+                                className="text-[10px] font-medium text-[var(--error)] hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
+                                title={
+                                  syncResult
+                                    ? `Fixed ${syncResult.fixed}/${syncResult.mismatches}`
+                                    : "Sync cache with platform data"
                                 }
-                              }}
-                              disabled={syncingCache}
-                              className="text-[10px] font-medium text-[var(--error)] hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
-                              title={syncResult ? `Fixed ${syncResult.fixed}/${syncResult.mismatches}` : "Sync cache with platform data"}
-                            >
-                              {syncingCache ? "Syncing…" : "Sync"}
-                            </button>
-                          )}
-                          {syncResult && syncResult.fixed > 0 && (
-                            <span className="text-[10px] text-[var(--success)]">
-                              ✓ {syncResult.fixed} fixed
-                            </span>
-                          )}
-                        </div>
-                      );
-                    })()}
+                              >
+                                {syncingCache ? "Syncing…" : "Sync"}
+                              </button>
+                            )}
+                            {syncResult && syncResult.fixed > 0 && (
+                              <span className="text-[10px] text-[var(--success)]">
+                                ✓ {syncResult.fixed} fixed
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
 
                     <Button
                       variant="outline"
@@ -1570,9 +1590,7 @@ export default function Dashboard() {
                   (() => {
                     const ITEMS_PER_PAGE = 20;
                     const filtered = userDashboardsSearch.trim()
-                      ? fuse
-                          .search(userDashboardsSearch)
-                          .map((r) => r.item)
+                      ? fuse.search(userDashboardsSearch).map((r) => r.item)
                       : [...userDashboards].sort(
                           (a, b) => b.total_papers - a.total_papers,
                         );
@@ -1637,10 +1655,18 @@ export default function Dashboard() {
                                   {/* Email */}
                                   <div className="sm:col-span-4 flex items-center gap-2">
                                     <span
-                                      className="text-[var(--foreground)] font-medium truncate"
-                                      title={user.email}
+                                      className={cn(
+                                        "font-medium truncate",
+                                        !user.email ||
+                                          user.email === "(unknown)"
+                                          ? "text-[var(--text-tertiary)] italic"
+                                          : "text-[var(--foreground)]",
+                                      )}
+                                      title={user.email || user.user_id}
                                     >
-                                      {user.email}
+                                      {user.email && user.email !== "(unknown)"
+                                        ? user.email
+                                        : `(no email — uid: ${user.user_id.slice(0, 8)}…)`}
                                     </span>
                                     {user.error && (
                                       <span className="inline-flex items-center rounded-full bg-[var(--error)]/10 px-2 py-0.5 text-[10px] font-medium text-[var(--error)]">
@@ -1741,89 +1767,119 @@ export default function Dashboard() {
                                         </p>
                                         <div className="space-y-2 max-h-80 overflow-y-auto">
                                           {user.papers.map((paper) => {
-                                            const outputIcons: Record<string, { icon: typeof Video; color: string }> = {
-                                              video: { icon: Video, color: "var(--warning)" },
-                                              reels: { icon: Film, color: "#a855f7" },
-                                              podcast: { icon: Mic, color: "#ec4899" },
-                                              poster: { icon: Image, color: "#14b8a6" },
+                                            const outputIcons: Record<
+                                              string,
+                                              {
+                                                icon: typeof Video;
+                                                color: string;
+                                              }
+                                            > = {
+                                              video: {
+                                                icon: Video,
+                                                color: "var(--warning)",
+                                              },
+                                              reels: {
+                                                icon: Film,
+                                                color: "#a855f7",
+                                              },
+                                              podcast: {
+                                                icon: Mic,
+                                                color: "#ec4899",
+                                              },
+                                              poster: {
+                                                icon: Image,
+                                                color: "#14b8a6",
+                                              },
                                             };
 
                                             return (
-                                            <div
-                                              key={paper.paper_id}
-                                              className="rounded-lg border border-[var(--border)] bg-[var(--background-secondary)] px-3 py-2.5"
-                                            >
-                                              {/* Title row */}
-                                              <div className="flex items-center justify-between gap-2 mb-2">
-                                                <p
-                                                  className="text-sm font-medium text-[var(--foreground)] truncate flex-1"
-                                                  title={paper.title}
-                                                >
-                                                  {paper.title}
-                                                </p>
-                                                <span
-                                                  className={cn(
-                                                    "shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium",
-                                                    paper.status === "uploaded"
-                                                      ? "bg-[var(--success)]/10 text-[var(--success)]"
-                                                      : "bg-[var(--warning)]/10 text-[var(--warning)]",
-                                                  )}
-                                                >
-                                                  {paper.status}
-                                                </span>
-                                              </div>
-
-                                              {/* Conversion flow: source → outputs */}
-                                              <div className="flex items-center gap-2 flex-wrap">
-                                                {/* Source pill */}
-                                                <span className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent-primary)]/10 px-2.5 py-1 text-[11px] font-medium text-[var(--accent-primary)]">
-                                                  <FileText className="h-3 w-3" />
-                                                  {paper.source_type}
-                                                </span>
-
-                                                {/* Date */}
-                                                <span className="text-[10px] text-[var(--text-tertiary)]">
-                                                  {new Date(
-                                                    paper.created_at,
-                                                  ).toLocaleDateString()}
-                                                </span>
-
-                                                {paper.outputs.length > 0 && (
-                                                  <>
-                                                    {/* Arrow connector */}
-                                                    <ArrowRight className="h-3 w-3 text-[var(--text-tertiary)]" />
-
-                                                    {/* Output pills */}
-                                                    {paper.outputs.map(
-                                                      (output) => {
-                                                        const config = outputIcons[output] || { icon: FileText, color: "var(--text-secondary)" };
-                                                        const OutputIcon = config.icon;
-                                                        return (
-                                                          <span
-                                                            key={output}
-                                                            className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium"
-                                                            style={{
-                                                              backgroundColor: `color-mix(in srgb, ${config.color} 12%, transparent)`,
-                                                              color: config.color,
-                                                            }}
-                                                          >
-                                                            <OutputIcon className="h-3 w-3" />
-                                                            {output}
-                                                          </span>
-                                                        );
-                                                      },
+                                              <div
+                                                key={paper.paper_id}
+                                                className="rounded-lg border border-[var(--border)] bg-[var(--background-secondary)] px-3 py-2.5"
+                                              >
+                                                {/* Title row */}
+                                                <div className="flex items-center justify-between gap-2 mb-2">
+                                                  <p
+                                                    className="text-sm font-medium text-[var(--foreground)] truncate flex-1"
+                                                    title={paper.title}
+                                                  >
+                                                    {paper.title}
+                                                  </p>
+                                                  <span
+                                                    className={cn(
+                                                      "shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium",
+                                                      paper.status ===
+                                                        "uploaded"
+                                                        ? "bg-[var(--success)]/10 text-[var(--success)]"
+                                                        : "bg-[var(--warning)]/10 text-[var(--warning)]",
                                                     )}
-                                                  </>
-                                                )}
-
-                                                {paper.outputs.length === 0 && (
-                                                  <span className="text-[10px] text-[var(--text-tertiary)] italic">
-                                                    — no outputs yet
+                                                  >
+                                                    {paper.status}
                                                   </span>
-                                                )}
+                                                </div>
+
+                                                {/* Conversion flow: source → outputs */}
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                  {/* Source pill */}
+                                                  <span className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent-primary)]/10 px-2.5 py-1 text-[11px] font-medium text-[var(--accent-primary)]">
+                                                    <FileText className="h-3 w-3" />
+                                                    {paper.source_type}
+                                                  </span>
+
+                                                  {/* Date */}
+                                                  <span className="text-[10px] text-[var(--text-tertiary)]">
+                                                    {new Date(
+                                                      paper.created_at,
+                                                    ).toLocaleDateString()}
+                                                  </span>
+
+                                                  {paper.outputs.length > 0 && (
+                                                    <>
+                                                      {/* Arrow connector */}
+                                                      <ArrowRight className="h-3 w-3 text-[var(--text-tertiary)]" />
+
+                                                      {/* Output pills */}
+                                                      {paper.outputs.map(
+                                                        (output) => {
+                                                          const config =
+                                                            outputIcons[
+                                                              output
+                                                            ] || {
+                                                              icon: FileText,
+                                                              color:
+                                                                "var(--text-secondary)",
+                                                            };
+                                                          const OutputIcon =
+                                                            config.icon;
+                                                          return (
+                                                            <span
+                                                              key={output}
+                                                              className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium"
+                                                              style={{
+                                                                backgroundColor: `color-mix(in srgb, ${config.color} 12%, transparent)`,
+                                                                color:
+                                                                  config.color,
+                                                              }}
+                                                            >
+                                                              <OutputIcon className="h-3 w-3" />
+                                                              {output}
+                                                            </span>
+                                                          );
+                                                        },
+                                                      )}
+                                                    </>
+                                                  )}
+
+                                                  {paper.outputs.length ===
+                                                    0 && (
+                                                    <span className="text-[10px] text-[var(--text-tertiary)] italic">
+                                                      — no outputs yet
+                                                    </span>
+                                                  )}
+                                                </div>
                                               </div>
-                                            </div>
-                                          )})}
+                                            );
+                                          })}
                                         </div>
                                       </div>
                                     )}

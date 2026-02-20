@@ -21,6 +21,21 @@ export async function POST() {
   try {
     const db = admin.firestore();
 
+    // 0. Load all Firebase Auth users — authoritative email source
+    const authEmailMap: Record<string, string> = {};
+    try {
+      let pageToken: string | undefined;
+      do {
+        const listResult = await admin.auth().listUsers(1000, pageToken);
+        listResult.users.forEach((u) => {
+          if (u.email) authEmailMap[u.uid] = u.email;
+        });
+        pageToken = listResult.pageToken;
+      } while (pageToken);
+    } catch (authErr) {
+      console.warn("[sync-cache] Could not load Firebase Auth users:", authErr);
+    }
+
     // 1. Read paper_metadata (ground truth)
     const paperMetaDocs = await db.collection("paper_metadata").get();
 
@@ -36,7 +51,11 @@ export async function POST() {
     paperMetaDocs.docs.forEach((doc) => {
       const data = doc.data();
       const userId = data.user_id as string | undefined;
-      const email = (data.user_email as string) || "(unknown)";
+      // Prefer Firebase Auth email, fall back to paper_metadata.user_email
+      const email =
+        (userId && authEmailMap[userId]) ||
+        (data.user_email as string) ||
+        "(unknown)";
 
       if (!userId) {
         orphanCount++;
@@ -119,12 +138,65 @@ export async function POST() {
       }
     }
 
+    // 3b. Heal stale / blank emails in cache entries that are NOT already in toFix
+    //     Firebase Auth is the authoritative email source.
+    const toFixIds = new Set(toFix.map((m) => m.userId));
+    interface EmailHeal {
+      userId: string;
+      correctEmail: string;
+      chunkId: string;
+    }
+    const emailHeals: EmailHeal[] = [];
+    for (const [userId, entry] of Object.entries(cacheMap)) {
+      if (toFixIds.has(userId)) continue; // will be fixed by main loop
+      const cachedEmail: string = entry.data.email || "";
+      const authEmail = authEmailMap[userId];
+      if (authEmail && (!cachedEmail || cachedEmail === "(unknown)")) {
+        emailHeals.push({
+          userId,
+          correctEmail: authEmail,
+          chunkId: entry.chunkId,
+        });
+      }
+    }
+
+    if (emailHeals.length > 0) {
+      // Group heals by chunk for minimal writes
+      const healsByChunk: Record<string, EmailHeal[]> = {};
+      for (const h of emailHeals) {
+        if (!healsByChunk[h.chunkId]) healsByChunk[h.chunkId] = [];
+        healsByChunk[h.chunkId].push(h);
+      }
+      for (const [chunkId, heals] of Object.entries(healsByChunk)) {
+        const chunkRef = cacheDocRef.collection("chunks").doc(chunkId);
+        const chunkDoc = await chunkRef.get();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const dashboards = chunkDoc.data()?.dashboards as any[];
+        let changed = false;
+        for (const heal of heals) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const idx = dashboards.findIndex(
+            (d: any) => d.user_id === heal.userId,
+          );
+          if (idx !== -1) {
+            dashboards[idx] = { ...dashboards[idx], email: heal.correctEmail };
+            changed = true;
+          }
+        }
+        if (changed) await chunkRef.set({ dashboards });
+      }
+      console.log(
+        `[sync-cache] Healed emails for ${emailHeals.length} cache entries`,
+      );
+    }
+
     if (toFix.length === 0) {
       return NextResponse.json({
         synced: true,
         mismatches: 0,
         fixed: 0,
         errors: 0,
+        emailsHealed: emailHeals.length,
         orphanPapers: orphanCount,
       });
     }
@@ -150,16 +222,18 @@ export async function POST() {
               "Content-Type": "application/json",
             },
             cache: "no-store",
-          }
+          },
         );
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         let freshEntry: any;
+        // Prefer Firebase Auth email (authoritative) over paper_metadata-derived email
+        const resolvedEmail = authEmailMap[item.userId] || item.email;
         if (resp.ok) {
           const apiData = await resp.json();
           freshEntry = {
             user_id: item.userId,
-            email: item.email,
+            email: resolvedEmail,
             total_papers: apiData.total_papers || 0,
             papers_by_source: apiData.papers_by_source || {},
             total_outputs: apiData.total_outputs || {},
@@ -170,7 +244,7 @@ export async function POST() {
           const meta = userPaperCounts[item.userId];
           freshEntry = {
             user_id: item.userId,
-            email: item.email,
+            email: resolvedEmail,
             total_papers: meta.paperCount,
             papers_by_source: {},
             total_outputs: meta.outputs,
@@ -190,7 +264,7 @@ export async function POST() {
           const dashboards = chunkDoc.data()?.dashboards as any[];
           const idx = dashboards.findIndex(
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            (d: any) => d.user_id === item.userId
+            (d: any) => d.user_id === item.userId,
           );
           if (idx !== -1) {
             dashboards[idx] = freshEntry;
@@ -222,7 +296,7 @@ export async function POST() {
 
         fixed++;
         details.push({
-          email: item.email,
+          email: resolvedEmail,
           type: item.type,
           status: "fixed",
           papers: freshEntry.total_papers,
@@ -230,7 +304,7 @@ export async function POST() {
       } catch (err) {
         errors++;
         details.push({
-          email: item.email,
+          email: authEmailMap[item.userId] || item.email,
           type: item.type,
           status: `error: ${err instanceof Error ? err.message : "unknown"}`,
         });
@@ -242,6 +316,7 @@ export async function POST() {
       mismatches: toFix.length,
       fixed,
       errors,
+      emailsHealed: emailHeals.length,
       orphanPapers: orphanCount,
       details,
     });

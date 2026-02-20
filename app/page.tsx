@@ -36,6 +36,7 @@ import {
   Search,
   ChevronDown,
   ChevronRight,
+  ArrowRight,
   BarChart3,
   Film,
   LogIn,
@@ -1739,51 +1740,90 @@ export default function Dashboard() {
                                           Papers ({user.papers.length})
                                         </p>
                                         <div className="space-y-2 max-h-80 overflow-y-auto">
-                                          {user.papers.map((paper) => (
+                                          {user.papers.map((paper) => {
+                                            const outputIcons: Record<string, { icon: typeof Video; color: string }> = {
+                                              video: { icon: Video, color: "var(--warning)" },
+                                              reels: { icon: Film, color: "#a855f7" },
+                                              podcast: { icon: Mic, color: "#ec4899" },
+                                              poster: { icon: Image, color: "#14b8a6" },
+                                            };
+
+                                            return (
                                             <div
                                               key={paper.paper_id}
-                                              className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-lg border border-[var(--border)] bg-[var(--background-secondary)] px-3 py-2"
+                                              className="rounded-lg border border-[var(--border)] bg-[var(--background-secondary)] px-3 py-2.5"
                                             >
-                                              <div className="flex-1 min-w-0">
+                                              {/* Title row */}
+                                              <div className="flex items-center justify-between gap-2 mb-2">
                                                 <p
-                                                  className="text-sm font-medium text-[var(--foreground)] truncate"
+                                                  className="text-sm font-medium text-[var(--foreground)] truncate flex-1"
                                                   title={paper.title}
                                                 >
                                                   {paper.title}
                                                 </p>
-                                                <div className="flex flex-wrap items-center gap-2 mt-1">
-                                                  <span className="inline-flex items-center rounded-full bg-[var(--accent-primary)]/10 px-2 py-0.5 text-[10px] font-medium text-[var(--accent-primary)]">
-                                                    {paper.source_type}
-                                                  </span>
-                                                  <span className="text-[10px] text-[var(--text-tertiary)]">
-                                                    {new Date(
-                                                      paper.created_at,
-                                                    ).toLocaleDateString()}
-                                                  </span>
-                                                  {paper.outputs.map(
-                                                    (output) => (
-                                                      <span
-                                                        key={output}
-                                                        className="inline-flex items-center rounded-full bg-[var(--success)]/10 px-2 py-0.5 text-[10px] font-medium text-[var(--success)]"
-                                                      >
-                                                        {output}
-                                                      </span>
-                                                    ),
+                                                <span
+                                                  className={cn(
+                                                    "shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium",
+                                                    paper.status === "uploaded"
+                                                      ? "bg-[var(--success)]/10 text-[var(--success)]"
+                                                      : "bg-[var(--warning)]/10 text-[var(--warning)]",
                                                   )}
-                                                </div>
+                                                >
+                                                  {paper.status}
+                                                </span>
                                               </div>
-                                              <span
-                                                className={cn(
-                                                  "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium",
-                                                  paper.status === "uploaded"
-                                                    ? "bg-[var(--success)]/10 text-[var(--success)]"
-                                                    : "bg-[var(--warning)]/10 text-[var(--warning)]",
+
+                                              {/* Conversion flow: source → outputs */}
+                                              <div className="flex items-center gap-2 flex-wrap">
+                                                {/* Source pill */}
+                                                <span className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent-primary)]/10 px-2.5 py-1 text-[11px] font-medium text-[var(--accent-primary)]">
+                                                  <FileText className="h-3 w-3" />
+                                                  {paper.source_type}
+                                                </span>
+
+                                                {/* Date */}
+                                                <span className="text-[10px] text-[var(--text-tertiary)]">
+                                                  {new Date(
+                                                    paper.created_at,
+                                                  ).toLocaleDateString()}
+                                                </span>
+
+                                                {paper.outputs.length > 0 && (
+                                                  <>
+                                                    {/* Arrow connector */}
+                                                    <ArrowRight className="h-3 w-3 text-[var(--text-tertiary)]" />
+
+                                                    {/* Output pills */}
+                                                    {paper.outputs.map(
+                                                      (output) => {
+                                                        const config = outputIcons[output] || { icon: FileText, color: "var(--text-secondary)" };
+                                                        const OutputIcon = config.icon;
+                                                        return (
+                                                          <span
+                                                            key={output}
+                                                            className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium"
+                                                            style={{
+                                                              backgroundColor: `color-mix(in srgb, ${config.color} 12%, transparent)`,
+                                                              color: config.color,
+                                                            }}
+                                                          >
+                                                            <OutputIcon className="h-3 w-3" />
+                                                            {output}
+                                                          </span>
+                                                        );
+                                                      },
+                                                    )}
+                                                  </>
                                                 )}
-                                              >
-                                                {paper.status}
-                                              </span>
+
+                                                {paper.outputs.length === 0 && (
+                                                  <span className="text-[10px] text-[var(--text-tertiary)] italic">
+                                                    — no outputs yet
+                                                  </span>
+                                                )}
+                                              </div>
                                             </div>
-                                          ))}
+                                          )})}
                                         </div>
                                       </div>
                                     )}

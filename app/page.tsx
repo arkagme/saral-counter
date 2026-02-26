@@ -1263,7 +1263,10 @@ export default function Dashboard() {
                       Platform Statistics
                     </h2>
                     <p className="text-sm text-[var(--text-secondary)]">
-                      Real-time content and usage metrics from the platform
+                      Real-time content and usage metrics from the platform{" "}
+                      <span className="font-semibold text-[var(--accent-primary)]">
+                        since 19th Feb 2026
+                      </span>
                     </p>
                   </div>
                   <Button

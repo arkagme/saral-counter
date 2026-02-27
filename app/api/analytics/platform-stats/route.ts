@@ -30,7 +30,7 @@ export async function GET() {
     const data = await response.json();
     // Adjust users count by -1 (hardcoded correction)
     if (data.users !== undefined) {
-      data.users = data.users - 1;
+      data.users = data.users;
     }
     return NextResponse.json(data);
   } catch (error) {

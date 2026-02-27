@@ -1705,17 +1705,24 @@ export default function Dashboard() {
                       <div className="inline-flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--background-tertiary)] px-3 py-1 text-xs font-medium text-[var(--text-secondary)]">
                         <Users className="h-3.5 w-3.5 text-[var(--accent-primary)]" />
                         {filteredUserDashboards.length} users
-                        {!showInternalData &&
-                          internalEmails.length > 0 &&
-                          filteredUserDashboards.length <
-                            userDashboards.length && (
+                        {(() => {
+                          const botCount = userDashboards.filter((u) =>
+                            SYSTEM_EXCLUDED_USER_IDS.has(u.user_id),
+                          ).length;
+                          const teamCount = !showInternalData
+                            ? internalUserCount
+                            : 0;
+                          const total = botCount + teamCount;
+                          if (total === 0) return null;
+                          const parts: string[] = [];
+                          if (teamCount > 0) parts.push(`${teamCount} team`);
+                          if (botCount > 0) parts.push(`${botCount} bot`);
+                          return (
                             <span className="text-[var(--text-tertiary)]">
-                              (
-                              {userDashboards.length -
-                                filteredUserDashboards.length}{" "}
-                              hidden)
+                              ({total} hidden ({parts.join(" + ")}))
                             </span>
-                          )}
+                          );
+                        })()}
                       </div>
                     )}
 

@@ -40,6 +40,8 @@ import {
   BarChart3,
   Film,
   LogIn,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -357,6 +359,13 @@ export default function Dashboard() {
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
   const [userDashboardsFetched, setUserDashboardsFetched] = useState(false);
 
+  // Internal team filter state
+  // showInternalData = false (default): platform stats & user dashboards exclude
+  //   internal team emails (the "external-facing" numbers).
+  // showInternalData = true: show real/full numbers including the team.
+  const [internalEmails, setInternalEmails] = useState<string[]>([]);
+  const [showInternalData, setShowInternalData] = useState(false);
+
   // Tally check state
   const [syncingCache, setSyncingCache] = useState(false);
   const [syncResult, setSyncResult] = useState<{
@@ -366,15 +375,148 @@ export default function Dashboard() {
     errors: number;
   } | null>(null);
 
-  // Fuse.js fuzzy search instance for email search
+  // --- Internal-team filtering ---
+
+  // System/bot account UIDs that are ALWAYS excluded regardless of the toggle.
+  // These accounts have no real email in Firebase Auth so they don't appear in
+  // the live count, but they may appear in the cached user dashboard list.
+  const SYSTEM_EXCLUDED_USER_IDS = useMemo(
+    () => new Set(["dev-swagger-user", "saral-analytics-service"]),
+    [],
+  );
+
+  // User dashboards filtered:
+  //  – system UIDs removed ALWAYS
+  //  – internal-team emails removed when showInternalData is false (default)
+  const filteredUserDashboards = useMemo(() => {
+    return userDashboards.filter((u) => {
+      if (SYSTEM_EXCLUDED_USER_IDS.has(u.user_id)) return false;
+      if (
+        !showInternalData &&
+        internalEmails.includes((u.email ?? "").toLowerCase())
+      )
+        return false;
+      return true;
+    });
+  }, [
+    userDashboards,
+    internalEmails,
+    showInternalData,
+    SYSTEM_EXCLUDED_USER_IDS,
+  ]);
+
+  // How many real Firebase Auth users (those with emails) to subtract from the
+  // raw Firebase counts (liveCount, lastHistoricalCount).
+  // System UIDs have no email in Firebase Auth → they are already excluded from
+  // those counts and must NOT be double-subtracted.
+  const internalUserCount = useMemo(() => {
+    if (showInternalData || internalEmails.length === 0) return 0;
+    return userDashboards.filter(
+      (u) =>
+        !SYSTEM_EXCLUDED_USER_IDS.has(u.user_id) &&
+        internalEmails.includes((u.email ?? "").toLowerCase()),
+    ).length;
+  }, [
+    userDashboards,
+    internalEmails,
+    showInternalData,
+    SYSTEM_EXCLUDED_USER_IDS,
+  ]);
+
+  // Platform stats adjusted by subtracting system + (optionally) internal team.
+  // For logins we have no per-user breakdown, so that field is left unchanged.
+  const displayedPlatformStats = useMemo((): PlatformStats | null => {
+    if (!platformStats) return null;
+
+    type Contrib = {
+      users: number;
+      papers: number;
+      videos: number;
+      reels: number;
+      podcasts: number;
+      posters: number;
+    };
+    const zero: Contrib = {
+      users: 0,
+      papers: 0,
+      videos: 0,
+      reels: 0,
+      podcasts: 0,
+      posters: 0,
+    };
+    const sum = (entries: typeof userDashboards): Contrib =>
+      entries.reduce(
+        (acc, u) => ({
+          users: acc.users + 1,
+          papers: acc.papers + (u.total_papers || 0),
+          videos: acc.videos + (u.total_outputs?.video || 0),
+          reels: acc.reels + (u.total_outputs?.reels || 0),
+          podcasts: acc.podcasts + (u.total_outputs?.podcast || 0),
+          posters: acc.posters + (u.total_outputs?.poster || 0),
+        }),
+        zero,
+      );
+
+    // System accounts are always subtracted
+    const systemContrib = sum(
+      userDashboards.filter((u) => SYSTEM_EXCLUDED_USER_IDS.has(u.user_id)),
+    );
+
+    // Internal-team accounts are subtracted only when the toggle is OFF
+    const teamContrib =
+      !showInternalData && internalEmails.length > 0
+        ? sum(
+            userDashboards.filter(
+              (u) =>
+                !SYSTEM_EXCLUDED_USER_IDS.has(u.user_id) &&
+                internalEmails.includes((u.email ?? "").toLowerCase()),
+            ),
+          )
+        : zero;
+
+    const sub = (a: number, b: number, c: number) => Math.max(0, a - b - c);
+    return {
+      users: sub(platformStats.users, systemContrib.users, teamContrib.users),
+      logins: platformStats.logins, // no per-user login breakdown available
+      papers: sub(
+        platformStats.papers,
+        systemContrib.papers,
+        teamContrib.papers,
+      ),
+      videos: sub(
+        platformStats.videos,
+        systemContrib.videos,
+        teamContrib.videos,
+      ),
+      reels: sub(platformStats.reels, systemContrib.reels, teamContrib.reels),
+      podcasts: sub(
+        platformStats.podcasts,
+        systemContrib.podcasts,
+        teamContrib.podcasts,
+      ),
+      posters: sub(
+        platformStats.posters,
+        systemContrib.posters,
+        teamContrib.posters,
+      ),
+    };
+  }, [
+    platformStats,
+    userDashboards,
+    internalEmails,
+    showInternalData,
+    SYSTEM_EXCLUDED_USER_IDS,
+  ]);
+
+  // Fuse.js fuzzy search instance — operates on the already-filtered list
   const fuse = useMemo(
     () =>
-      new Fuse(userDashboards, {
+      new Fuse(filteredUserDashboards, {
         keys: ["email"],
         threshold: 0.4,
         includeMatches: true,
       }),
-    [userDashboards],
+    [filteredUserDashboards],
   );
 
   // Color constants based on CSS variables for Recharts
@@ -470,6 +612,19 @@ export default function Dashboard() {
       console.error("Error fetching returning users:", err);
     } finally {
       setReturningLoading(false);
+    }
+  }, []);
+
+  // Fetch the internal-team email list from the server
+  const fetchInternalEmails = useCallback(async () => {
+    try {
+      const res = await fetch("/api/analytics/internal-emails");
+      const json = await res.json();
+      if (Array.isArray(json.emails)) {
+        setInternalEmails(json.emails);
+      }
+    } catch (err) {
+      console.error("Error fetching internal emails:", err);
     }
   }, []);
 
@@ -607,6 +762,7 @@ export default function Dashboard() {
   useEffect(() => {
     if (isAuthenticated) {
       fetchPlatformStats();
+      fetchInternalEmails();
       if (!userDashboardsFetched) {
         fetchUserDashboards();
       }
@@ -615,6 +771,7 @@ export default function Dashboard() {
     isAuthenticated,
     fetchPlatformStats,
     fetchUserDashboards,
+    fetchInternalEmails,
     userDashboardsFetched,
   ]);
 
@@ -640,8 +797,23 @@ export default function Dashboard() {
       ? data[data.length - 1].count - data[data.length - 2].count
       : 0;
 
+  // Adjusted counts that subtract excluded users (system + internal team when toggle is off).
+  // System UIDs have no email in Firebase Auth so they are NOT in liveCount → we only
+  // subtract internalUserCount (real email-bearing internal accounts).
+  const displayedLiveCount = useMemo(() => {
+    if (liveCount === null) return null;
+    return Math.max(0, liveCount - internalUserCount);
+  }, [liveCount, internalUserCount]);
+
+  const displayedLastHistoricalCount = useMemo(
+    () => Math.max(0, lastHistoricalCount - internalUserCount),
+    [lastHistoricalCount, internalUserCount],
+  );
+
   const NewChange =
-    data.length > 1 && liveCount !== null ? liveCount - lastHistoricalCount : 0;
+    data.length > 1 && displayedLiveCount !== null
+      ? displayedLiveCount - displayedLastHistoricalCount
+      : 0;
 
   // Calculate dynamic Y-axis domain for better visualization
   const getYAxisDomain = (): [number, number] | [number, string] => {
@@ -769,7 +941,9 @@ export default function Dashboard() {
                       <Activity className="h-5 w-5 text-blue-100 opacity-80" />
                     </div>
                     <p className="mt-2 text-4xl font-bold tracking-tight">
-                      {liveCount !== null ? liveCount.toLocaleString() : "—"}
+                      {displayedLiveCount !== null
+                        ? displayedLiveCount.toLocaleString()
+                        : "—"}
                     </p>
                   </div>
                   <div className="mt-4 flex items-center justify-between">
@@ -803,7 +977,7 @@ export default function Dashboard() {
                       24h Snapshot
                     </p>
                     <p className="mt-2 text-4xl font-bold text-[var(--foreground)]">
-                      {lastHistoricalCount.toLocaleString()}
+                      {displayedLastHistoricalCount.toLocaleString()}
                     </p>
                   </div>
                   <div className="rounded-lg bg-[var(--background-tertiary)] p-2">
@@ -1269,17 +1443,67 @@ export default function Dashboard() {
                       </span>
                     </p>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={fetchPlatformStats}
-                    disabled={platformStatsLoading}
-                  >
-                    <RefreshCw
-                      className={`h-3.5 w-3.5 ${platformStatsLoading ? "animate-spin" : ""}`}
-                    />
-                    <span className="ml-1">Refresh</span>
-                  </Button>
+
+                  <div className="flex items-center gap-3">
+                    {/* Internal-team toggle — only shown when emails are configured */}
+                    {internalEmails.length > 0 && (
+                      <div className="flex items-center gap-2">
+                        {/* Toggle switch */}
+                        <button
+                          role="switch"
+                          aria-checked={showInternalData}
+                          onClick={() => setShowInternalData((v) => !v)}
+                          title={
+                            showInternalData
+                              ? "Showing real numbers — click to exclude team"
+                              : "Team excluded — click to show real numbers"
+                          }
+                          className={cn(
+                            "relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)] focus-visible:ring-offset-2",
+                            showInternalData
+                              ? "bg-[var(--accent-primary)]"
+                              : "bg-[var(--background-tertiary)] ring-1 ring-[var(--border)]",
+                          )}
+                        >
+                          <span
+                            className={cn(
+                              "pointer-events-none inline-block h-3.5 w-3.5 rounded-full bg-white shadow-md transition-transform duration-200",
+                              showInternalData
+                                ? "translate-x-[18px]"
+                                : "translate-x-[2px]",
+                            )}
+                          />
+                        </button>
+
+                        {/* Label */}
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--text-secondary)] select-none">
+                          {showInternalData ? (
+                            <>
+                              <Eye className="h-3.5 w-3.5" />
+                              <span>Show team data</span>
+                            </>
+                          ) : (
+                            <>
+                              <EyeOff className="h-3.5 w-3.5" />
+                              <span>Team excluded</span>
+                            </>
+                          )}
+                        </span>
+                      </div>
+                    )}
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={fetchPlatformStats}
+                      disabled={platformStatsLoading}
+                    >
+                      <RefreshCw
+                        className={`h-3.5 w-3.5 ${platformStatsLoading ? "animate-spin" : ""}`}
+                      />
+                      <span className="ml-1">Refresh</span>
+                    </Button>
+                  </div>
                 </div>
 
                 {platformStatsLoading && !platformStats ? (
@@ -1296,50 +1520,66 @@ export default function Dashboard() {
                     <BarChart3 className="h-8 w-8 mb-2 opacity-50" />
                     <p className="text-sm">{platformStatsError}</p>
                   </div>
-                ) : platformStats ? (
+                ) : displayedPlatformStats ? (
                   <div className="space-y-6">
+                    {/* Filter notice */}
+                    {!showInternalData && internalEmails.length > 0 && (
+                      <div className="flex items-center gap-2 rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/5 px-3 py-2 text-xs text-[var(--text-secondary)]">
+                        <EyeOff className="h-3.5 w-3.5 shrink-0 text-[var(--warning)]" />
+                        <span>
+                          Team activity excluded.{" "}
+                          <button
+                            onClick={() => setShowInternalData(true)}
+                            className="font-medium text-[var(--accent-primary)] underline-offset-2 hover:underline"
+                          >
+                            Show real numbers
+                          </button>
+                        </span>
+                      </div>
+                    )}
+
                     {/* Stats Grid */}
                     <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-4">
                       {[
                         {
                           label: "Users",
-                          value: platformStats.users,
+                          value: displayedPlatformStats.users,
                           icon: Users,
                           color: "var(--accent-primary)",
                         },
                         {
                           label: "Logins",
-                          value: platformStats.logins,
+                          value: displayedPlatformStats.logins,
                           icon: LogIn,
                           color: "var(--success)",
                         },
                         {
                           label: "Papers",
-                          value: platformStats.papers,
+                          value: displayedPlatformStats.papers,
                           icon: FileText,
                           color: "var(--info)",
                         },
                         {
                           label: "Videos",
-                          value: platformStats.videos,
+                          value: displayedPlatformStats.videos,
                           icon: Video,
                           color: "var(--warning)",
                         },
                         {
                           label: "Reels",
-                          value: platformStats.reels,
+                          value: displayedPlatformStats.reels,
                           icon: Film,
                           color: "#a855f7",
                         },
                         {
                           label: "Podcasts",
-                          value: platformStats.podcasts,
+                          value: displayedPlatformStats.podcasts,
                           icon: Mic,
                           color: "#ec4899",
                         },
                         {
                           label: "Posters",
-                          value: platformStats.posters,
+                          value: displayedPlatformStats.posters,
                           icon: Image,
                           color: "#14b8a6",
                         },
@@ -1377,29 +1617,29 @@ export default function Dashboard() {
                               data={[
                                 // {
                                 //   name: "Papers",
-                                //   value: platformStats.papers,
+                                //   value: displayedPlatformStats.papers,
                                 //   fill:
                                 //     theme === "dark" ? "#5b9fff" : "#0288d1",
                                 // },
                                 {
                                   name: "Videos",
-                                  value: platformStats.videos,
+                                  value: displayedPlatformStats.videos,
                                   fill:
                                     theme === "dark" ? "#ffb020" : "#f57c00",
                                 },
                                 {
                                   name: "Reels",
-                                  value: platformStats.reels,
+                                  value: displayedPlatformStats.reels,
                                   fill: "#a855f7",
                                 },
                                 {
                                   name: "Podcasts",
-                                  value: platformStats.podcasts,
+                                  value: displayedPlatformStats.podcasts,
                                   fill: "#ec4899",
                                 },
                                 {
                                   name: "Posters",
-                                  value: platformStats.posters,
+                                  value: displayedPlatformStats.posters,
                                   fill: "#14b8a6",
                                 },
                               ].filter((d) => d.value > 0)}
@@ -1453,15 +1693,30 @@ export default function Dashboard() {
                     {userDashboards.length > 0 && (
                       <div className="inline-flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--background-tertiary)] px-3 py-1 text-xs font-medium text-[var(--text-secondary)]">
                         <Users className="h-3.5 w-3.5 text-[var(--accent-primary)]" />
-                        {userDashboards.length} users
+                        {filteredUserDashboards.length} users
+                        {!showInternalData &&
+                          internalEmails.length > 0 &&
+                          filteredUserDashboards.length <
+                            userDashboards.length && (
+                            <span className="text-[var(--text-tertiary)]">
+                              (
+                              {userDashboards.length -
+                                filteredUserDashboards.length}{" "}
+                              hidden)
+                            </span>
+                          )}
                       </div>
                     )}
 
                     {/* Tally check indicator */}
                     {userDashboards.length > 0 &&
-                      platformStats &&
+                      displayedPlatformStats &&
                       (() => {
-                        const cacheTotals = userDashboards.reduce(
+                        // Use the same filtered set and adjusted stats that the
+                        // dashboard is currently displaying — so the dot always
+                        // answers "are the numbers I SEE in sync?", not "are
+                        // the raw backend numbers in sync?".
+                        const cacheTotals = filteredUserDashboards.reduce(
                           (acc, u) => ({
                             papers: acc.papers + (u.total_papers || 0),
                             videos: acc.videos + (u.total_outputs?.video || 0),
@@ -1480,11 +1735,15 @@ export default function Dashboard() {
                           },
                         );
                         const isSynced =
-                          cacheTotals.papers === platformStats.papers &&
-                          cacheTotals.videos === platformStats.videos &&
-                          cacheTotals.reels === platformStats.reels &&
-                          cacheTotals.podcasts === platformStats.podcasts &&
-                          cacheTotals.posters === platformStats.posters;
+                          cacheTotals.papers ===
+                            displayedPlatformStats.papers &&
+                          cacheTotals.videos ===
+                            displayedPlatformStats.videos &&
+                          cacheTotals.reels === displayedPlatformStats.reels &&
+                          cacheTotals.podcasts ===
+                            displayedPlatformStats.podcasts &&
+                          cacheTotals.posters ===
+                            displayedPlatformStats.posters;
 
                         const syncHandler = async (e: React.MouseEvent) => {
                           e.stopPropagation();
@@ -1524,7 +1783,7 @@ export default function Dashboard() {
                                 onClick={syncHandler}
                                 disabled={syncingCache}
                                 className="h-2 w-2 rounded-full bg-[var(--error)] shadow-[0_0_4px_var(--error)] animate-pulse disabled:opacity-50 cursor-pointer"
-                                title={`Out of sync — Cache: Pa${cacheTotals.papers}/V${cacheTotals.videos}/R${cacheTotals.reels}/Po${cacheTotals.podcasts}/Pr${cacheTotals.posters} vs Platform: Pa${platformStats.papers}/V${platformStats.videos}/R${platformStats.reels}/Po${platformStats.podcasts}/Pr${platformStats.posters} — click to sync`}
+                                title={`Out of sync — Cache: Pa${cacheTotals.papers}/V${cacheTotals.videos}/R${cacheTotals.reels}/Po${cacheTotals.podcasts}/Pr${cacheTotals.posters} vs Platform: Pa${displayedPlatformStats.papers}/V${displayedPlatformStats.videos}/R${displayedPlatformStats.reels}/Po${displayedPlatformStats.podcasts}/Pr${displayedPlatformStats.posters} — click to sync`}
                               />
                             )}
                             {/* Tiny always-visible manual sync icon (for email heals even when green) */}
@@ -1595,7 +1854,7 @@ export default function Dashboard() {
                     const ITEMS_PER_PAGE = 20;
                     const filtered = userDashboardsSearch.trim()
                       ? fuse.search(userDashboardsSearch).map((r) => r.item)
-                      : [...userDashboards].sort(
+                      : [...filteredUserDashboards].sort(
                           (a, b) => b.total_papers - a.total_papers,
                         );
                     const totalPages = Math.ceil(

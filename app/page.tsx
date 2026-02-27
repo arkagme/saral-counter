@@ -476,7 +476,16 @@ export default function Dashboard() {
 
     const sub = (a: number, b: number, c: number) => Math.max(0, a - b - c);
     return {
-      users: sub(platformStats.users, systemContrib.users, teamContrib.users),
+      // Use Firebase Auth (liveCount) as the source of truth for the user count.
+      // The external platform API can return a slightly different number (ghost
+      // accounts, deleted-but-not-purged records, system UIDs tracked differently),
+      // causing persistent off-by-N gaps. Firebase Auth is authoritative; the same
+      // internalUserCount adjustment used for displayedLiveCount is applied here so
+      // both cards always agree.
+      users:
+        liveCount !== null
+          ? Math.max(0, liveCount - internalUserCount)
+          : sub(platformStats.users, systemContrib.users, teamContrib.users),
       logins: platformStats.logins, // no per-user login breakdown available
       papers: sub(
         platformStats.papers,
@@ -504,6 +513,8 @@ export default function Dashboard() {
     platformStats,
     userDashboards,
     internalEmails,
+    internalUserCount,
+    liveCount,
     showInternalData,
     SYSTEM_EXCLUDED_USER_IDS,
   ]);

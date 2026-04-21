@@ -15,6 +15,7 @@ import {
   Cell,
   PieChart,
   Pie,
+  Legend,
 } from "recharts";
 import {
   Users,
@@ -42,6 +43,13 @@ import {
   LogIn,
   Eye,
   EyeOff,
+  AlertCircle,
+  CheckCircle2,
+  XCircle,
+  Calendar,
+  Filter,
+  Briefcase,
+  TrendingUp,
 } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -297,6 +305,30 @@ interface PlatformStats {
   reels: number;
   podcasts: number;
   posters: number;
+  business_briefs?: number;
+}
+
+type ArtifactKey = "video" | "poster" | "reel" | "podcast" | "business_brief";
+
+interface ArtifactResult {
+  status: "success" | "failed" | "in_progress" | "not_attempted";
+  failed_at_stage?: string;
+  error?: string;
+}
+
+interface PipelineStageInfo {
+  status: "completed" | "failed" | "in_progress";
+  duration_seconds?: number;
+}
+
+interface ProcessedPaper {
+  paper_id: string;
+  user_id?: string;
+  created_at: string;
+  artifacts: Partial<Record<ArtifactKey, ArtifactResult>>;
+  stages: Partial<Record<string, PipelineStageInfo>>;
+  current_stage: string;
+  last_successful_stage: string;
 }
 
 interface UserDashboardPaper {
@@ -318,6 +350,77 @@ interface UserDashboardEntry {
   fetched_at: string;
   error?: string;
 }
+
+// ── Pipeline Analytics constants (module-level, no closure issues) ────────────
+
+const ARTIFACT_TYPES: ArtifactKey[] = [
+  "video",
+  "poster",
+  "reel",
+  "podcast",
+  "business_brief",
+];
+
+const ARTIFACT_CONFIG: Record<
+  ArtifactKey,
+  { label: string; color: string; stages: string[] }
+> = {
+  video: {
+    label: "Video",
+    color: "#ffb020",
+    stages: [
+      "script_generation",
+      "slides_generation",
+      "audio_generation",
+      "video_generation",
+    ],
+  },
+  poster: {
+    label: "Poster",
+    color: "#14b8a6",
+    stages: ["poster_generation"],
+  },
+  reel: {
+    label: "Reel",
+    color: "#a855f7",
+    stages: [
+      "reel_script_generation",
+      "reel_audio_generation",
+      "reel_video_generation",
+    ],
+  },
+  podcast: {
+    label: "Podcast",
+    color: "#ec4899",
+    stages: [
+      "podcast_script_generation",
+      "podcast_audio_generation",
+      "podcast_audio_combining",
+      "podcast_generation",
+    ],
+  },
+  business_brief: {
+    label: "Brief",
+    color: "#22d3ee",
+    stages: ["business_brief_generation"],
+  },
+};
+
+const STAGE_LABELS: Record<string, string> = {
+  script_generation: "Script Gen",
+  slides_generation: "Slides",
+  audio_generation: "Audio",
+  video_generation: "Video Render",
+  poster_generation: "Poster",
+  reel_script_generation: "Script",
+  reel_audio_generation: "Audio",
+  reel_video_generation: "Video",
+  podcast_script_generation: "Script",
+  podcast_audio_generation: "Audio Gen",
+  podcast_audio_combining: "Combine",
+  podcast_generation: "Generate",
+  business_brief_generation: "Generate",
+};
 
 export default function Dashboard() {
   const [data, setData] = useState<DataPoint[]>([]);
@@ -374,6 +477,21 @@ export default function Dashboard() {
     fixed: number;
     errors: number;
   } | null>(null);
+
+  // Pipeline Analytics state
+  const [pipelineData, setPipelineData] = useState<ProcessedPaper[] | null>(null);
+  const [pipelineLoading, setPipelineLoading] = useState(false);
+  const [pipelineError, setPipelineError] = useState("");
+  const [pipelineCachedAt, setPipelineCachedAt] = useState<string | null>(null);
+  const [pipelineTab, setPipelineTab] = useState<"overview" | "failures" | "cohorts" | "raw">("overview");
+  const [pipelineDateFrom, setPipelineDateFrom] = useState("");
+  const [pipelineDateTo, setPipelineDateTo] = useState("");
+  const [pipelineFailureArtifactFilter, setPipelineFailureArtifactFilter] = useState("all");
+  const [pipelineSearch, setPipelineSearch] = useState("");
+  const [pipelinePage, setPipelinePage] = useState(0);
+  const [pipelineExpandedRow, setPipelineExpandedRow] = useState<string | null>(null);
+  const [pipelineStatusFilter, setPipelineStatusFilter] = useState("all");
+  const [pipelineRawArtifactFilter, setPipelineRawArtifactFilter] = useState("all");
 
   // --- Internal-team filtering ---
 
@@ -518,6 +636,146 @@ export default function Dashboard() {
     showInternalData,
     SYSTEM_EXCLUDED_USER_IDS,
   ]);
+
+  // ══ Pipeline Analytics computed values ══════════════════════════════════════
+
+  // Filtered by selected date range (client-side)
+  const filteredPipelinePapers = useMemo(() => {
+    if (!pipelineData) return [];
+    return pipelineData.filter((p) => {
+      const d = new Date(p.created_at);
+      if (pipelineDateFrom && d < new Date(pipelineDateFrom)) return false;
+      if (pipelineDateTo && d > new Date(pipelineDateTo + "T23:59:59Z")) return false;
+      return true;
+    });
+  }, [pipelineData, pipelineDateFrom, pipelineDateTo]);
+
+  // Per-artifact stats (success / failed / in_progress / not_attempted)
+  const pipelineArtifactStats = useMemo(() => {
+    const init = () => ({ success: 0, failed: 0, in_progress: 0, not_attempted: 0, total_attempted: 0 });
+    const stats: Record<ArtifactKey, ReturnType<typeof init>> = {
+      video: init(), poster: init(), reel: init(), podcast: init(), business_brief: init(),
+    };
+    filteredPipelinePapers.forEach((p) => {
+      ARTIFACT_TYPES.forEach((art) => {
+        const s = p.artifacts[art]?.status ?? "not_attempted";
+        (stats[art] as Record<string, number>)[s] =
+          ((stats[art] as Record<string, number>)[s] || 0) + 1;
+        if (s !== "not_attempted") stats[art].total_attempted++;
+      });
+    });
+    return stats;
+  }, [filteredPipelinePapers]);
+
+  // Ranked failure reasons overall
+  const pipelineFailureReasons = useMemo(() => {
+    const reasons: Record<string, { count: number; artifacts: Set<string> }> = {};
+    filteredPipelinePapers.forEach((p) => {
+      ARTIFACT_TYPES.forEach((art) => {
+        const a = p.artifacts[art];
+        if (a?.status === "failed" && a.error) {
+          if (!reasons[a.error]) reasons[a.error] = { count: 0, artifacts: new Set() };
+          reasons[a.error].count++;
+          reasons[a.error].artifacts.add(art);
+        }
+      });
+    });
+    return Object.entries(reasons)
+      .sort((a, b) => b[1].count - a[1].count)
+      .map(([reason, d]) => ({ reason, count: d.count, artifacts: [...d.artifacts] }));
+  }, [filteredPipelinePapers]);
+
+  // Failure reasons per artifact
+  const pipelineFailuresByArtifact = useMemo(() => {
+    const byArt: Record<ArtifactKey, Record<string, number>> = {
+      video: {}, poster: {}, reel: {}, podcast: {}, business_brief: {},
+    };
+    filteredPipelinePapers.forEach((p) => {
+      ARTIFACT_TYPES.forEach((art) => {
+        const a = p.artifacts[art];
+        if (a?.status === "failed" && a.error)
+          byArt[art][a.error] = (byArt[art][a.error] || 0) + 1;
+      });
+    });
+    const result: Record<ArtifactKey, { reason: string; count: number }[]> = {
+      video: [], poster: [], reel: [], podcast: [], business_brief: [],
+    };
+    ARTIFACT_TYPES.forEach((art) => {
+      result[art] = Object.entries(byArt[art])
+        .sort((a, b) => b[1] - a[1])
+        .map(([reason, count]) => ({ reason, count }));
+    });
+    return result;
+  }, [filteredPipelinePapers]);
+
+  // Stage-level counts for pipeline flow diagram
+  const pipelineStageStats = useMemo(() => {
+    const stats: Record<string, { completed: number; failed: number; in_progress: number }> = {};
+    filteredPipelinePapers.forEach((p) => {
+      Object.entries(p.stages).forEach(([name, info]) => {
+        if (!stats[name]) stats[name] = { completed: 0, failed: 0, in_progress: 0 };
+        const s = info?.status;
+        if (s === "completed") stats[name].completed++;
+        else if (s === "failed") stats[name].failed++;
+        else if (s === "in_progress") stats[name].in_progress++;
+      });
+    });
+    return stats;
+  }, [filteredPipelinePapers]);
+
+  // Cohort comparison from filtered papers (for Pipeline Analytics cohorts tab)
+  const pipelineCohorts = useMemo(() => {
+    if (!filteredPipelinePapers.length) return [];
+    const sorted = [...filteredPipelinePapers].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+    const BATCH = 1000;
+    return Array.from({ length: Math.ceil(sorted.length / BATCH) }, (_, i) => {
+      const batch = sorted.slice(i * BATCH, (i + 1) * BATCH);
+      const entry: Record<string, unknown> = {
+        label: i === 0 ? "Recent 1K" : `${i}K–${i + 1}K`,
+        count: batch.length,
+        start_date: batch[batch.length - 1]?.created_at,
+        end_date: batch[0]?.created_at,
+      };
+      ARTIFACT_TYPES.forEach((art) => {
+        entry[art] = batch.filter((p) => p.artifacts[art]?.status === "success").length;
+        entry[art + "_f"] = batch.filter((p) => p.artifacts[art]?.status === "failed").length;
+      });
+      return entry;
+    });
+  }, [filteredPipelinePapers]);
+
+  // Cohort comparison from FULL dataset for Platform Stats card
+  const platformCohorts = useMemo(() => {
+    if (!pipelineData || !pipelineData.length) return [];
+    const sorted = [...pipelineData].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+    const BATCH = 1000;
+    return Array.from({ length: Math.ceil(sorted.length / BATCH) }, (_, i) => {
+      const batch = sorted.slice(i * BATCH, (i + 1) * BATCH);
+      const entry: Record<string, unknown> = {
+        label: i === 0 ? "Recent 1K" : `${i}K–${i + 1}K`,
+        count: batch.length,
+      };
+      ARTIFACT_TYPES.forEach((art) => {
+        entry[ARTIFACT_CONFIG[art].label] = batch.filter(
+          (p) => p.artifacts[art]?.status === "success"
+        ).length;
+      });
+      return entry;
+    });
+  }, [pipelineData]);
+
+  // Business brief count for Platform Stats (from pipeline, unfiltered)
+  const businessBriefSuccessCount = useMemo(
+    () =>
+      pipelineData
+        ? pipelineData.filter((p) => p.artifacts.business_brief?.status === "success").length
+        : 0,
+    [pipelineData]
+  );
 
   // Fuse.js fuzzy search instance — operates on the already-filtered list
   const fuse = useMemo(
@@ -683,6 +941,28 @@ export default function Dashboard() {
     }
   }, []);
 
+  // Fetch pipeline analytics data
+  const fetchPipelineAnalytics = useCallback(async (refresh = false) => {
+    if (pipelineLoading) return;
+    setPipelineLoading(true);
+    setPipelineError("");
+    try {
+      const url = `/api/analytics/pipeline-analytics${refresh ? "?refresh=true" : ""}`;
+      const res = await fetch(url);
+      const json = await res.json();
+      if (json.error) {
+        setPipelineError(json.error);
+        return;
+      }
+      setPipelineData(json.papers || []);
+      setPipelineCachedAt(json.cached_at || null);
+    } catch (err) {
+      setPipelineError(err instanceof Error ? err.message : "Failed to load pipeline data");
+    } finally {
+      setPipelineLoading(false);
+    }
+  }, [pipelineLoading]);
+
   // Refresh a single user's dashboard
   const refreshSingleUser = useCallback(async (userId: string) => {
     setRefreshingUser(userId);
@@ -777,6 +1057,9 @@ export default function Dashboard() {
       if (!userDashboardsFetched) {
         fetchUserDashboards();
       }
+      if (!pipelineData && !pipelineLoading) {
+        fetchPipelineAnalytics();
+      }
     }
   }, [
     isAuthenticated,
@@ -784,6 +1067,9 @@ export default function Dashboard() {
     fetchUserDashboards,
     fetchInternalEmails,
     userDashboardsFetched,
+    pipelineData,
+    pipelineLoading,
+    fetchPipelineAnalytics,
   ]);
 
   // Handle authentication
@@ -1531,7 +1817,7 @@ export default function Dashboard() {
                     <BarChart3 className="h-8 w-8 mb-2 opacity-50" />
                     <p className="text-sm">{platformStatsError}</p>
                   </div>
-                ) : displayedPlatformStats ? (
+                 ) : displayedPlatformStats ? (
                   <div className="space-y-6">
                     {/* Filter notice */}
                     {!showInternalData && internalEmails.length > 0 && (
@@ -1549,68 +1835,30 @@ export default function Dashboard() {
                       </div>
                     )}
 
-                    {/* Stats Grid */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-4">
+                    {/* Stats Grid — 8 metrics */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
                       {[
-                        {
-                          label: "Users",
-                          value: displayedPlatformStats.users,
-                          icon: Users,
-                          color: "var(--accent-primary)",
-                        },
-                        {
-                          label: "Logins",
-                          value: displayedPlatformStats.logins,
-                          icon: LogIn,
-                          color: "var(--success)",
-                        },
-                        {
-                          label: "Papers",
-                          value: displayedPlatformStats.papers,
-                          icon: FileText,
-                          color: "var(--info)",
-                        },
-                        {
-                          label: "Videos",
-                          value: displayedPlatformStats.videos,
-                          icon: Video,
-                          color: "var(--warning)",
-                        },
-                        {
-                          label: "Reels",
-                          value: displayedPlatformStats.reels,
-                          icon: Film,
-                          color: "#a855f7",
-                        },
-                        {
-                          label: "Podcasts",
-                          value: displayedPlatformStats.podcasts,
-                          icon: Mic,
-                          color: "#ec4899",
-                        },
-                        {
-                          label: "Posters",
-                          value: displayedPlatformStats.posters,
-                          icon: Image,
-                          color: "#14b8a6",
-                        },
+                        { label: "Users", value: displayedPlatformStats.users, icon: Users, color: "var(--accent-primary)" },
+                        { label: "Logins", value: displayedPlatformStats.logins, icon: LogIn, color: "var(--success)" },
+                        { label: "Papers", value: displayedPlatformStats.papers, icon: FileText, color: "var(--info)" },
+                        { label: "Videos", value: displayedPlatformStats.videos, icon: Video, color: "#ffb020" },
+                        { label: "Reels", value: displayedPlatformStats.reels, icon: Film, color: "#a855f7" },
+                        { label: "Podcasts", value: displayedPlatformStats.podcasts, icon: Mic, color: "#ec4899" },
+                        { label: "Posters", value: displayedPlatformStats.posters, icon: Image, color: "#14b8a6" },
+                        { label: "Briefs", value: businessBriefSuccessCount, icon: Briefcase, color: "#22d3ee", note: pipelineData ? undefined : "loading…" },
                       ].map((stat) => {
                         const IconComp = stat.icon;
                         return (
-                          <div
-                            key={stat.label}
-                            className="flex flex-col items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--background-tertiary)] p-4 transition-all duration-200 hover:shadow-md hover:border-[var(--border-dark)]"
-                          >
-                            <IconComp
-                              className="h-5 w-5 mb-2"
-                              style={{ color: stat.color }}
-                            />
+                          <div key={stat.label} className="flex flex-col items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--background-tertiary)] p-3 transition-all duration-200 hover:shadow-md hover:border-[var(--border-dark)]">
+                            <IconComp className="h-5 w-5 mb-1.5" style={{ color: stat.color }} />
                             <p className="text-2xl font-bold text-[var(--foreground)]">
-                              {stat.value.toLocaleString()}
+                              {stat.note ? (
+                                <span className="text-sm text-[var(--text-tertiary)]">{stat.note}</span>
+                              ) : (
+                                stat.value.toLocaleString()
+                              )}
                             </p>
-                            <p className="text-xs font-medium text-[var(--text-secondary)] mt-1">
-                              {stat.label}
-                            </p>
+                            <p className="text-xs font-medium text-[var(--text-secondary)] mt-0.5">{stat.label}</p>
                           </div>
                         );
                       })}
@@ -1621,38 +1869,16 @@ export default function Dashboard() {
                       <h3 className="text-sm font-semibold text-[var(--text-secondary)] mb-4">
                         Content Distribution
                       </h3>
-                      <div className="h-[280px] w-full max-w-md">
+                      <div className="h-[280px] w-full max-w-lg">
                         <ResponsiveContainer width="100%" height="100%">
                           <PieChart>
                             <Pie
                               data={[
-                                // {
-                                //   name: "Papers",
-                                //   value: displayedPlatformStats.papers,
-                                //   fill:
-                                //     theme === "dark" ? "#5b9fff" : "#0288d1",
-                                // },
-                                {
-                                  name: "Videos",
-                                  value: displayedPlatformStats.videos,
-                                  fill:
-                                    theme === "dark" ? "#ffb020" : "#f57c00",
-                                },
-                                {
-                                  name: "Reels",
-                                  value: displayedPlatformStats.reels,
-                                  fill: "#a855f7",
-                                },
-                                {
-                                  name: "Podcasts",
-                                  value: displayedPlatformStats.podcasts,
-                                  fill: "#ec4899",
-                                },
-                                {
-                                  name: "Posters",
-                                  value: displayedPlatformStats.posters,
-                                  fill: "#14b8a6",
-                                },
+                                { name: "Videos", value: displayedPlatformStats.videos, fill: theme === "dark" ? "#ffb020" : "#f57c00" },
+                                { name: "Reels", value: displayedPlatformStats.reels, fill: "#a855f7" },
+                                { name: "Podcasts", value: displayedPlatformStats.podcasts, fill: "#ec4899" },
+                                { name: "Posters", value: displayedPlatformStats.posters, fill: "#14b8a6" },
+                                { name: "Briefs", value: businessBriefSuccessCount, fill: "#22d3ee" },
                               ].filter((d) => d.value > 0)}
                               cx="50%"
                               cy="50%"
@@ -1677,8 +1903,81 @@ export default function Dashboard() {
                         </ResponsiveContainer>
                       </div>
                     </div>
+
+                    {/* ── Output Yield by 1000-Paper Cohort ─────────────── */}
+                    {platformCohorts.length > 0 && (
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <h3 className="text-sm font-semibold text-[var(--text-secondary)]">
+                            Output Yield by 1,000-Paper Cohort
+                          </h3>
+                          <span className="text-xs text-[var(--text-tertiary)]">Newest → Oldest →</span>
+                        </div>
+                        <p className="text-xs text-[var(--text-tertiary)] mb-4">
+                          Artifacts successfully generated per batch of 1,000 papers (from pipeline data)
+                        </p>
+                        <div className="h-[280px] w-full">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={platformCohorts} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartColors.grid} />
+                              <XAxis dataKey="label" tick={{ fontSize: 11, fill: chartColors.text }} axisLine={false} tickLine={false} />
+                              <YAxis tick={{ fontSize: 11, fill: chartColors.text }} axisLine={false} tickLine={false} width={40} />
+                              <Tooltip
+                                contentStyle={{
+                                  backgroundColor: chartColors.tooltipBg,
+                                  borderColor: chartColors.tooltipBorder,
+                                  borderRadius: "0.5rem",
+                                  fontSize: 12,
+                                }}
+                              />
+                              <Legend wrapperStyle={{ fontSize: 12 }} />
+                              <Bar dataKey="Video" fill="#ffb020" radius={[3, 3, 0, 0]} maxBarSize={28} />
+                              <Bar dataKey="Poster" fill="#14b8a6" radius={[3, 3, 0, 0]} maxBarSize={28} />
+                              <Bar dataKey="Reel" fill="#a855f7" radius={[3, 3, 0, 0]} maxBarSize={28} />
+                              <Bar dataKey="Podcast" fill="#ec4899" radius={[3, 3, 0, 0]} maxBarSize={28} />
+                              <Bar dataKey="Brief" fill="#22d3ee" radius={[3, 3, 0, 0]} maxBarSize={28} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                        {/* Cohort Summary Table */}
+                        <div className="mt-4 rounded-xl border border-[var(--border)] overflow-hidden">
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead className="bg-[var(--background-tertiary)] border-b border-[var(--border)]">
+                                <tr>
+                                  {["Cohort", "Papers", "Videos", "Reels", "Podcasts", "Posters", "Briefs"].map((h) => (
+                                    <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider whitespace-nowrap">{h}</th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-[var(--border)]">
+                                {platformCohorts.map((cohort, i) => (
+                                  <tr key={i} className="hover:bg-[var(--background-hover)] transition-colors">
+                                    <td className="px-4 py-2.5 font-medium text-[var(--foreground)]">{String(cohort.label)}</td>
+                                    <td className="px-4 py-2.5 text-[var(--text-secondary)]">{Number(cohort.count).toLocaleString()}</td>
+                                    <td className="px-4 py-2.5 font-semibold" style={{ color: "#ffb020" }}>{Number(cohort["Video"] ?? 0).toLocaleString()}</td>
+                                    <td className="px-4 py-2.5 font-semibold" style={{ color: "#a855f7" }}>{Number(cohort["Reel"] ?? 0).toLocaleString()}</td>
+                                    <td className="px-4 py-2.5 font-semibold" style={{ color: "#ec4899" }}>{Number(cohort["Podcast"] ?? 0).toLocaleString()}</td>
+                                    <td className="px-4 py-2.5 font-semibold" style={{ color: "#14b8a6" }}>{Number(cohort["Poster"] ?? 0).toLocaleString()}</td>
+                                    <td className="px-4 py-2.5 font-semibold" style={{ color: "#22d3ee" }}>{Number(cohort["Brief"] ?? 0).toLocaleString()}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {/* Loading indicator for cohort data */}
+                    {pipelineLoading && platformCohorts.length === 0 && (
+                      <div className="flex items-center gap-2 text-xs text-[var(--text-tertiary)] pt-2 border-t border-[var(--border)]">
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                        Loading cohort data from pipeline…
+                      </div>
+                    )}
                   </div>
                 ) : null}
+
               </Card>
             )}
 
@@ -2229,6 +2528,535 @@ export default function Dashboard() {
                     <p className="text-sm">No user dashboard data available</p>
                   </div>
                 )}
+              </Card>
+            )}
+
+            {/* ══ Pipeline Analytics Card ══════════════════════════════════ */}
+            {isAuthenticated && (
+              <Card className="flex flex-col">
+                {/* Header */}
+                <div className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <h2 className="text-lg font-semibold text-[var(--foreground)] flex items-center gap-2">
+                      <TrendingUp className="h-5 w-5 text-[var(--accent-primary)]" />
+                      Pipeline Analytics
+                    </h2>
+                    <p className="text-sm text-[var(--text-secondary)]">
+                      Processing pipeline health · failure analysis · cohort comparison
+                      {pipelineCachedAt && (
+                        <span className="ml-2 text-xs text-[var(--text-tertiary)]">
+                          (cached: {new Date(pipelineCachedAt).toLocaleString()})
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fetchPipelineAnalytics(true)}
+                    disabled={pipelineLoading}
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${pipelineLoading ? "animate-spin" : ""}`} />
+                    <span className="ml-1">{pipelineLoading ? "Loading..." : "Refresh"}</span>
+                  </Button>
+                </div>
+
+                {/* Time Range Selector */}
+                <div className="flex flex-wrap items-center gap-3 mb-5 px-4 py-3 rounded-xl bg-[var(--background-tertiary)] border border-[var(--border)]">
+                  <Calendar className="h-4 w-4 text-[var(--text-secondary)] shrink-0" />
+                  <span className="text-sm font-medium text-[var(--text-secondary)]">Time Range:</span>
+                  <button
+                    onClick={() => { setPipelineDateFrom(""); setPipelineDateTo(""); }}
+                    className={cn(
+                      "px-2.5 py-1 rounded-full text-xs font-medium border transition-colors",
+                      !pipelineDateFrom && !pipelineDateTo
+                        ? "bg-[var(--accent-primary)] text-white border-transparent"
+                        : "border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent-primary)]"
+                    )}
+                  >
+                    All Time
+                  </button>
+                  <input
+                    type="date"
+                    value={pipelineDateFrom}
+                    onChange={(e) => { setPipelineDateFrom(e.target.value); setPipelinePage(0); }}
+                    className="h-8 rounded-lg border border-[var(--border)] bg-[var(--background)] px-2 text-xs text-[var(--foreground)] focus:outline-none focus:border-[var(--accent-primary)]"
+                  />
+                  <span className="text-[var(--text-tertiary)] text-sm">to</span>
+                  <input
+                    type="date"
+                    value={pipelineDateTo}
+                    onChange={(e) => { setPipelineDateTo(e.target.value); setPipelinePage(0); }}
+                    className="h-8 rounded-lg border border-[var(--border)] bg-[var(--background)] px-2 text-xs text-[var(--foreground)] focus:outline-none focus:border-[var(--accent-primary)]"
+                  />
+                  {(pipelineDateFrom || pipelineDateTo) && pipelineData && (
+                    <span className="text-xs font-medium text-[var(--accent-primary)]">
+                      {filteredPipelinePapers.length.toLocaleString()} / {pipelineData.length.toLocaleString()} papers
+                    </span>
+                  )}
+                </div>
+
+                {/* Tab Bar */}
+                <div className="flex border-b border-[var(--border)] mb-6 overflow-x-auto">
+                  {([
+                    { id: "overview" as const, label: "Overview" },
+                    { id: "failures" as const, label: "Failure Analysis" },
+                    { id: "cohorts" as const, label: "Cohort Comparison" },
+                    { id: "raw" as const, label: "Raw Data" },
+                  ]).map((tab) => (
+                    <button
+                      key={tab.id}
+                      onClick={() => { setPipelineTab(tab.id); setPipelinePage(0); }}
+                      className={cn(
+                        "px-5 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap",
+                        pipelineTab === tab.id
+                          ? "border-[var(--accent-primary)] text-[var(--accent-primary)]"
+                          : "border-transparent text-[var(--text-secondary)] hover:text-[var(--foreground)] hover:border-[var(--border-dark)]"
+                      )}
+                    >
+                      {tab.label}
+                      {tab.id === "overview" && pipelineData && (
+                        <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--background-tertiary)] text-[var(--text-tertiary)]">
+                          {filteredPipelinePapers.length.toLocaleString()}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Loading / Error */}
+                {pipelineLoading && !pipelineData && (
+                  <div className="flex flex-col items-center justify-center h-48 gap-3">
+                    <RefreshCw className="h-7 w-7 animate-spin text-[var(--accent-primary)]" />
+                    <p className="text-sm text-[var(--text-secondary)]">Fetching pipeline data...</p>
+                    <p className="text-xs text-[var(--text-tertiary)]">This may take 5-10s on first load</p>
+                  </div>
+                )}
+                {pipelineError && !pipelineData && (
+                  <div className="flex items-center gap-3 p-4 rounded-lg border border-[var(--error)]/30 bg-[var(--error)]/5">
+                    <AlertCircle className="h-5 w-5 text-[var(--error)] shrink-0" />
+                    <p className="text-sm text-[var(--text-secondary)]">{pipelineError}</p>
+                  </div>
+                )}
+
+                {/* Tab Content (IIFE) */}
+                {pipelineData && (() => {
+                  const totalSuccess = ARTIFACT_TYPES.reduce((sum, art) => sum + pipelineArtifactStats[art].success, 0);
+                  const totalFailed = ARTIFACT_TYPES.reduce((sum, art) => sum + pipelineArtifactStats[art].failed, 0);
+                  const overallRate = totalSuccess + totalFailed > 0 ? Math.round((totalSuccess / (totalSuccess + totalFailed)) * 100) : 0;
+                  const worstArtifact = ARTIFACT_TYPES.reduce((worst, art) => {
+                    const s = pipelineArtifactStats[art];
+                    const wb = pipelineArtifactStats[worst];
+                    const pct = s.total_attempted > 0 ? s.success / s.total_attempted : 1;
+                    const wPct = wb.total_attempted > 0 ? wb.success / wb.total_attempted : 1;
+                    return pct < wPct ? art : worst;
+                  });
+                  const topIssue = pipelineFailureReasons[0]?.reason ?? "None";
+
+                  /* ── OVERVIEW ── */
+                  if (pipelineTab === "overview") return (
+                    <div className="space-y-8">
+                      {/* KPI row */}
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+                        {[
+                          { label: "Total Papers", value: filteredPipelinePapers.length.toLocaleString(), icon: FileText, color: "var(--accent-primary)" },
+                          { label: "Success Rate", value: overallRate + "%", icon: TrendingUp, color: "var(--success)" },
+                          { label: "Total Failures", value: totalFailed.toLocaleString(), icon: XCircle, color: "var(--error)" },
+                          { label: "Hardest Artifact", value: ARTIFACT_CONFIG[worstArtifact].label, icon: AlertCircle, color: "var(--warning)" },
+                          { label: "Top Issue", value: topIssue.substring(0, 22) + (topIssue.length > 22 ? "..." : ""), icon: Filter, color: "#a855f7" },
+                        ].map((kpi) => { const KpiIcon = kpi.icon; return (
+                          <div key={kpi.label} className="rounded-xl border border-[var(--border)] bg-[var(--background-tertiary)] p-4">
+                            <div className="flex items-center justify-between mb-2">
+                              <p className="text-xs font-medium text-[var(--text-secondary)]">{kpi.label}</p>
+                              <KpiIcon className="h-4 w-4 shrink-0" style={{ color: kpi.color }} />
+                            </div>
+                            <p className="text-xl font-bold text-[var(--foreground)] leading-tight">{kpi.value}</p>
+                          </div>
+                        ); })}
+                      </div>
+
+                      {/* Artifact health donut cards */}
+                      <div>
+                        <h3 className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-4">Artifact Health</h3>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+                          {ARTIFACT_TYPES.map((art) => {
+                            const s = pipelineArtifactStats[art];
+                            const pct = s.total_attempted > 0 ? Math.round((s.success / s.total_attempted) * 100) : 0;
+                            const cfg = ARTIFACT_CONFIG[art];
+                            const deg = pct * 3.6;
+                            return (
+                              <div key={art} className="rounded-xl border border-[var(--border)] bg-[var(--background-tertiary)] p-4 flex flex-col items-center gap-3">
+                                <div style={{ width: 76, height: 76, borderRadius: "50%", background: s.total_attempted === 0 ? "var(--background-secondary)" : `conic-gradient(${cfg.color} ${deg}deg, var(--background-secondary) ${deg}deg)`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                  <div style={{ width: 52, height: 52, borderRadius: "50%", background: "var(--background-secondary)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                    <span className="text-sm font-bold" style={{ color: cfg.color }}>{pct}%</span>
+                                  </div>
+                                </div>
+                                <div className="text-center">
+                                  <p className="text-sm font-semibold text-[var(--foreground)]">{cfg.label}</p>
+                                  <p className="text-xs text-[var(--text-tertiary)] mt-0.5">
+                                    <span className="text-[var(--success)] font-medium">{s.success.toLocaleString()}</span>{" / "}{s.total_attempted.toLocaleString()}
+                                  </p>
+                                  {s.failed > 0 && <p className="text-[10px] text-[var(--error)] mt-0.5">{s.failed} failed</p>}
+                                  {s.in_progress > 0 && <p className="text-[10px] text-[var(--warning)] mt-0.5">{s.in_progress} in-progress</p>}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Pipeline flow per artifact */}
+                      <div>
+                        <h3 className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-4">Pipeline Stage Flow</h3>
+                        <div className="space-y-4">
+                          {ARTIFACT_TYPES.map((art) => {
+                            const cfg = ARTIFACT_CONFIG[art];
+                            return (
+                              <div key={art} className="rounded-xl border border-[var(--border)] p-4">
+                                <div className="flex items-center gap-2 mb-3">
+                                  <div className="h-2.5 w-2.5 rounded-full" style={{ background: cfg.color }} />
+                                  <span className="text-sm font-semibold text-[var(--foreground)]">{cfg.label}</span>
+                                </div>
+                                <div className="flex items-start gap-2 overflow-x-auto pb-1">
+                                  {cfg.stages.map((stage, si) => {
+                                    const ss = pipelineStageStats[stage] ?? { completed: 0, failed: 0, in_progress: 0 };
+                                    const tot = ss.completed + ss.failed + ss.in_progress;
+                                    const pct2 = tot > 0 ? Math.round((ss.completed / tot) * 100) : 0;
+                                    return (
+                                      <>
+                                        {si > 0 && <ArrowRight key={`arr-${si}`} className="h-4 w-4 text-[var(--text-tertiary)] shrink-0 mt-4" />}
+                                        <div key={stage} className="flex flex-col items-center gap-1.5 min-w-[88px] rounded-lg border border-[var(--border)] bg-[var(--background-secondary)] p-2.5 text-center shrink-0">
+                                          <p className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wide leading-tight">{STAGE_LABELS[stage]}</p>
+                                          <div className="w-full h-1 rounded-full bg-[var(--background-tertiary)]">
+                                            <div className="h-full rounded-full" style={{ width: pct2 + "%", background: cfg.color }} />
+                                          </div>
+                                          <div className="flex gap-1.5 text-[11px] font-medium">
+                                            <span className="text-[var(--success)]">{ss.completed}✓</span>
+                                            {ss.failed > 0 && <span className="text-[var(--error)]">{ss.failed}✗</span>}
+                                          </div>
+                                        </div>
+                                      </>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  );
+
+                  /* ── FAILURE ANALYSIS ── */
+                  if (pipelineTab === "failures") {
+                    const displayedReasons = pipelineFailureArtifactFilter === "all"
+                      ? pipelineFailureReasons
+                      : pipelineFailuresByArtifact[pipelineFailureArtifactFilter as ArtifactKey].map((r) => ({ ...r, artifacts: [pipelineFailureArtifactFilter] }));
+                    const maxCount = displayedReasons[0]?.count || 1;
+                    const chartData = ARTIFACT_TYPES.map((art) => ({
+                      name: ARTIFACT_CONFIG[art].label,
+                      Failures: pipelineArtifactStats[art].failed,
+                      Success: pipelineArtifactStats[art].success,
+                    }));
+                    return (
+                      <div className="space-y-6">
+                        <div className="flex flex-wrap gap-2">
+                          {(["all", ...ARTIFACT_TYPES] as const).map((art) => {
+                            const isAll = art === "all";
+                            const label = isAll ? "All Artifacts" : ARTIFACT_CONFIG[art as ArtifactKey].label;
+                            const count = isAll ? pipelineFailureReasons.reduce((s, r) => s + r.count, 0) : pipelineArtifactStats[art as ArtifactKey].failed;
+                            const active = pipelineFailureArtifactFilter === art;
+                            return (
+                              <button key={art} onClick={() => setPipelineFailureArtifactFilter(art)}
+                                className={cn("px-3 py-1.5 rounded-full text-xs font-medium border transition-all",
+                                  active ? "text-white border-transparent shadow-sm" : "border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent-primary)] bg-[var(--background-tertiary)]"
+                                )}
+                                style={active ? { background: isAll ? "var(--accent-primary)" : ARTIFACT_CONFIG[art as ArtifactKey].color } : {}}
+                              >
+                                {label} ({count})
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <div className="rounded-xl border border-[var(--border)] p-4">
+                          <h3 className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-4">Success vs Failure by Artifact</h3>
+                          <div className="h-[220px]">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <BarChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartColors.grid} />
+                                <XAxis dataKey="name" tick={{ fontSize: 12, fill: chartColors.text }} axisLine={false} tickLine={false} />
+                                <YAxis tick={{ fontSize: 11, fill: chartColors.text }} axisLine={false} tickLine={false} width={40} />
+                                <Tooltip contentStyle={{ backgroundColor: chartColors.tooltipBg, borderColor: chartColors.tooltipBorder, borderRadius: "0.5rem" }} />
+                                <Legend wrapperStyle={{ fontSize: 12 }} />
+                                <Bar dataKey="Success" fill="var(--success)" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                                <Bar dataKey="Failures" fill="var(--error)" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
+                        </div>
+                        <div className="rounded-xl border border-[var(--border)] overflow-hidden">
+                          <div className="px-4 py-3 bg-[var(--background-tertiary)] border-b border-[var(--border)] flex items-center justify-between">
+                            <h3 className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">
+                              Ranked Failure Reasons
+                              {pipelineFailureArtifactFilter !== "all" && (
+                                <span className="ml-1 normal-case font-normal">- {ARTIFACT_CONFIG[pipelineFailureArtifactFilter as ArtifactKey].label}</span>
+                              )}
+                            </h3>
+                            <span className="text-xs text-[var(--text-tertiary)]">{displayedReasons.length} distinct</span>
+                          </div>
+                          {displayedReasons.length === 0 ? (
+                            <div className="flex items-center justify-center gap-2 h-20 text-[var(--text-tertiary)]">
+                              <CheckCircle2 className="h-5 w-5 text-[var(--success)]" />
+                              <span className="text-sm">No failures</span>
+                            </div>
+                          ) : (
+                            <div className="divide-y divide-[var(--border)]">
+                              {displayedReasons.map((item, i) => (
+                                <div key={i} className="flex items-center gap-3 px-4 py-3 hover:bg-[var(--background-hover)] transition-colors">
+                                  <span className="w-6 text-right text-xs font-mono text-[var(--text-tertiary)] shrink-0">#{i + 1}</span>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-medium text-[var(--foreground)] truncate">{item.reason}</p>
+                                    {"artifacts" in item && item.artifacts.length > 0 && (
+                                      <div className="flex gap-1 mt-0.5 flex-wrap">
+                                        {item.artifacts.map((a) => (
+                                          <span key={a} className="text-[10px] font-medium px-1.5 py-0.5 rounded-full"
+                                            style={{ background: `${ARTIFACT_CONFIG[a as ArtifactKey]?.color ?? "var(--accent-primary)"}22`, color: ARTIFACT_CONFIG[a as ArtifactKey]?.color ?? "var(--accent-primary)" }}>
+                                            {ARTIFACT_CONFIG[a as ArtifactKey]?.label ?? a}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
+                                    <div className="mt-1.5 h-1 rounded-full bg-[var(--background-tertiary)]">
+                                      <div className="h-full rounded-full bg-[var(--error)] opacity-60" style={{ width: `${Math.round((item.count / maxCount) * 100)}%` }} />
+                                    </div>
+                                  </div>
+                                  <span className="text-sm font-bold text-[var(--foreground)] shrink-0 ml-2">{item.count}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  /* ── COHORT COMPARISON ── */
+                  if (pipelineTab === "cohorts") return (
+                    <div className="space-y-6">
+                      <div className="rounded-xl border border-[var(--border)] p-4">
+                        <h3 className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-1">Success Count per 1,000-Paper Cohort</h3>
+                        <p className="text-xs text-[var(--text-tertiary)] mb-4">Newest first (left). Uses current time-range filter.</p>
+                        <div className="h-[280px]">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={pipelineCohorts} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartColors.grid} />
+                              <XAxis dataKey="label" tick={{ fontSize: 11, fill: chartColors.text }} axisLine={false} tickLine={false} />
+                              <YAxis tick={{ fontSize: 11, fill: chartColors.text }} axisLine={false} tickLine={false} width={40} />
+                              <Tooltip contentStyle={{ backgroundColor: chartColors.tooltipBg, borderColor: chartColors.tooltipBorder, borderRadius: "0.5rem", fontSize: 12 }} />
+                              <Legend wrapperStyle={{ fontSize: 12 }} />
+                              {ARTIFACT_TYPES.map((art) => (
+                                <Bar key={art} dataKey={art} name={ARTIFACT_CONFIG[art].label} fill={ARTIFACT_CONFIG[art].color} radius={[3, 3, 0, 0]} maxBarSize={30} />
+                              ))}
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+                      <div className="rounded-xl border border-[var(--border)] overflow-hidden">
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead className="bg-[var(--background-tertiary)] border-b border-[var(--border)]">
+                              <tr>
+                                {["Cohort", "Papers", "Date Range", "Video", "Poster", "Reel", "Podcast", "Brief", "Success %"].map((h) => (
+                                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider whitespace-nowrap">{h}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-[var(--border)]">
+                              {pipelineCohorts.map((c, i) => {
+                                const cSuccess = ARTIFACT_TYPES.reduce((s, art) => s + (Number(c[art]) || 0), 0);
+                                const cFail = ARTIFACT_TYPES.reduce((s, art) => s + (Number(c[art + "_f"]) || 0), 0);
+                                const cTotal = cSuccess + cFail;
+                                const rate = cTotal > 0 ? Math.round((cSuccess / cTotal) * 100) : 0;
+                                return (
+                                  <tr key={i} className="hover:bg-[var(--background-hover)] transition-colors">
+                                    <td className="px-4 py-3 font-medium text-[var(--foreground)]">{String(c.label)}</td>
+                                    <td className="px-4 py-3 text-[var(--text-secondary)]">{Number(c.count)}</td>
+                                    <td className="px-4 py-3 text-xs text-[var(--text-tertiary)] whitespace-nowrap">
+                                      {c.start_date ? new Date(String(c.start_date)).toLocaleDateString() : "-"}{" - "}
+                                      {c.end_date ? new Date(String(c.end_date)).toLocaleDateString() : "-"}
+                                    </td>
+                                    {ARTIFACT_TYPES.map((art) => (
+                                      <td key={art} className="px-4 py-3">
+                                        <span className="font-semibold" style={{ color: ARTIFACT_CONFIG[art].color }}>{Number(c[art] ?? 0)}</span>
+                                      </td>
+                                    ))}
+                                    <td className="px-4 py-3">
+                                      <span className={cn("font-bold text-sm", rate >= 80 ? "text-[var(--success)]" : rate >= 60 ? "text-[var(--warning)]" : "text-[var(--error)]")}>{rate}%</span>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  );
+
+                  /* ── RAW DATA ── */
+                  if (pipelineTab === "raw") {
+                    const ITEMS = 25;
+                    let rawFiltered = filteredPipelinePapers;
+                    if (pipelineSearch.trim()) {
+                      const q = pipelineSearch.trim().toLowerCase();
+                      rawFiltered = rawFiltered.filter((p) => p.paper_id.toLowerCase().includes(q));
+                    }
+                    if (pipelineRawArtifactFilter !== "all") {
+                      rawFiltered = rawFiltered.filter((p) => {
+                        const a = p.artifacts[pipelineRawArtifactFilter as ArtifactKey];
+                        return a && a.status !== "not_attempted";
+                      });
+                    }
+                    if (pipelineStatusFilter !== "all") {
+                      rawFiltered = rawFiltered.filter((p) =>
+                        ARTIFACT_TYPES.some((art) => p.artifacts[art]?.status === pipelineStatusFilter)
+                      );
+                    }
+                    const totalPages = Math.ceil(rawFiltered.length / ITEMS);
+                    const paged = [...rawFiltered].reverse().slice(pipelinePage * ITEMS, (pipelinePage + 1) * ITEMS);
+
+                    const statusDot = (status: string | undefined) => {
+                      const colors: Record<string, string> = { success: "var(--success)", failed: "var(--error)", in_progress: "var(--warning)" };
+                      if (!status || status === "not_attempted") return <span className="text-[var(--text-tertiary)] text-xs block text-center">-</span>;
+                      return <div className="h-2.5 w-2.5 rounded-full mx-auto" title={status} style={{ background: colors[status] ?? "var(--text-tertiary)" }} />;
+                    };
+
+                    return (
+                      <div className="space-y-4">
+                        <div className="flex flex-wrap gap-3">
+                          <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--text-tertiary)]" />
+                            <input
+                              placeholder="Search Paper ID..."
+                              value={pipelineSearch}
+                              onChange={(e) => { setPipelineSearch(e.target.value); setPipelinePage(0); }}
+                              className="h-9 rounded-lg border border-[var(--border)] bg-[var(--background)] pl-9 pr-3 text-sm text-[var(--foreground)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-[var(--accent-primary)] w-64"
+                            />
+                          </div>
+                          <select
+                            value={pipelineRawArtifactFilter}
+                            onChange={(e) => { setPipelineRawArtifactFilter(e.target.value); setPipelinePage(0); }}
+                            className="h-9 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] focus:outline-none focus:border-[var(--accent-primary)]"
+                          >
+                            <option value="all">All Artifacts</option>
+                            {ARTIFACT_TYPES.map((art) => (
+                              <option key={art} value={art}>{ARTIFACT_CONFIG[art].label}</option>
+                            ))}
+                          </select>
+                          <select
+                            value={pipelineStatusFilter}
+                            onChange={(e) => { setPipelineStatusFilter(e.target.value); setPipelinePage(0); }}
+                            className="h-9 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] focus:outline-none focus:border-[var(--accent-primary)]"
+                          >
+                            <option value="all">All Statuses</option>
+                            <option value="success">Success</option>
+                            <option value="failed">Failed</option>
+                            <option value="in_progress">In Progress</option>
+                          </select>
+                          <span className="text-xs text-[var(--text-secondary)] self-center">{rawFiltered.length.toLocaleString()} papers</span>
+                        </div>
+                        <div className="rounded-xl border border-[var(--border)] overflow-hidden">
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead className="bg-[var(--background-tertiary)] border-b border-[var(--border)]">
+                                <tr>
+                                  <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">Paper ID</th>
+                                  <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">Date</th>
+                                  {ARTIFACT_TYPES.map((art) => (
+                                    <th key={art} className="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wider" style={{ color: ARTIFACT_CONFIG[art].color }}>
+                                      {ARTIFACT_CONFIG[art].label}
+                                    </th>
+                                  ))}
+                                  <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">Stage</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-[var(--border)]">
+                                {paged.map((paper) => {
+                                  const isExp = pipelineExpandedRow === paper.paper_id;
+                                  return (
+                                    <>
+                                      <tr
+                                        key={paper.paper_id}
+                                        className={cn("cursor-pointer transition-colors hover:bg-[var(--background-hover)]", isExp && "bg-[var(--background-tertiary)]")}
+                                        onClick={() => setPipelineExpandedRow(isExp ? null : paper.paper_id)}
+                                      >
+                                        <td className="px-4 py-3">
+                                          <div className="flex items-center gap-1.5">
+                                            {isExp ? <ChevronDown className="h-3.5 w-3.5 text-[var(--text-tertiary)]" /> : <ChevronRight className="h-3.5 w-3.5 text-[var(--text-tertiary)]" />}
+                                            <span className="font-mono text-xs text-[var(--text-secondary)]">{paper.paper_id.substring(0, 13)}...</span>
+                                          </div>
+                                        </td>
+                                        <td className="px-4 py-3 text-xs text-[var(--text-secondary)] whitespace-nowrap">{new Date(paper.created_at).toLocaleDateString()}</td>
+                                        {ARTIFACT_TYPES.map((art) => (
+                                          <td key={art} className="px-3 py-3 text-center">{statusDot(paper.artifacts[art]?.status)}</td>
+                                        ))}
+                                        <td className="px-4 py-3 text-xs text-[var(--text-tertiary)] font-mono truncate max-w-[160px]">{paper.current_stage || "-"}</td>
+                                      </tr>
+                                      {isExp && (
+                                        <tr key={paper.paper_id + "_exp"}>
+                                          <td colSpan={8} className="px-6 py-4 bg-[var(--background-tertiary)]/60">
+                                            <div className="space-y-3">
+                                              <p className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase">Full Paper ID</p>
+                                              <p className="font-mono text-xs text-[var(--foreground)] break-all">{paper.paper_id}</p>
+                                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-3">
+                                                {ARTIFACT_TYPES.map((art) => {
+                                                  const a = paper.artifacts[art];
+                                                  if (!a || a.status === "not_attempted") return null;
+                                                  return (
+                                                    <div key={art} className="rounded-lg border border-[var(--border)] p-3">
+                                                      <div className="flex items-center gap-2 mb-2">
+                                                        <div className="h-2 w-2 rounded-full" style={{ background: ARTIFACT_CONFIG[art].color }} />
+                                                        <p className="text-xs font-semibold text-[var(--foreground)]">{ARTIFACT_CONFIG[art].label}</p>
+                                                        <span className={cn("ml-auto text-[10px] font-medium px-1.5 py-0.5 rounded-full",
+                                                          a.status === "success" ? "bg-[var(--success)]/10 text-[var(--success)]" :
+                                                          a.status === "failed" ? "bg-[var(--error)]/10 text-[var(--error)]" :
+                                                          "bg-[var(--warning)]/10 text-[var(--warning)]"
+                                                        )}>{a.status}</span>
+                                                      </div>
+                                                      {a.failed_at_stage && <p className="text-[10px] text-[var(--text-secondary)]">Failed at: <span className="font-mono">{a.failed_at_stage}</span></p>}
+                                                      {a.error && <p className="text-[10px] text-[var(--error)] mt-1 leading-relaxed">{a.error}</p>}
+                                                    </div>
+                                                  );
+                                                })}
+                                              </div>
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      )}
+                                    </>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                        {totalPages > 1 && (
+                          <div className="flex items-center justify-between pt-1">
+                            <p className="text-xs text-[var(--text-secondary)]">
+                              {pipelinePage * ITEMS + 1}-{Math.min((pipelinePage + 1) * ITEMS, rawFiltered.length)} of {rawFiltered.length.toLocaleString()}
+                            </p>
+                            <div className="flex gap-2">
+                              <Button variant="outline" size="sm" onClick={() => setPipelinePage((p) => Math.max(0, p - 1))} disabled={pipelinePage === 0}>Previous</Button>
+                              <Button variant="outline" size="sm" onClick={() => setPipelinePage((p) => Math.min(totalPages - 1, p + 1))} disabled={pipelinePage >= totalPages - 1}>Next</Button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
+
+                  return null;
+                })()}
               </Card>
             )}
           </div>

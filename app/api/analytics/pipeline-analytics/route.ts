@@ -11,16 +11,27 @@ const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 function categorizeError(raw: string): string {
   if (!raw || raw === "unknown") return "Unknown error";
   const r = raw.toLowerCase();
-  if (r.includes("429") || r.includes("quota") || r.includes("resource exhausted") || r.includes("rate-limit") || r.includes("rate limit")) return "API quota / rate-limit exceeded";
+  if (
+    r.includes("429") ||
+    r.includes("quota") ||
+    r.includes("resource exhausted") ||
+    r.includes("rate-limit") ||
+    r.includes("rate limit")
+  )
+    return "API quota / rate-limit exceeded";
   if (r.includes("sarvam") && r.includes("tts")) return "Sarvam TTS failure";
   if (r.includes("sarvam")) return "Sarvam service failure";
-  if (r.includes("unable to deserialize") || r.includes("deserializ")) return "Job deserialization error";
-  if (r.includes("500 internal server error") && r.includes("poster")) return "Poster service unavailable";
-  if (r.includes("gemini") && (r.includes("fail") || r.includes("error"))) return "Gemini API failure";
+  if (r.includes("unable to deserialize") || r.includes("deserializ"))
+    return "Job deserialization error";
+  if (r.includes("500 internal server error") && r.includes("poster"))
+    return "Poster service unavailable";
+  if (r.includes("gemini") && (r.includes("fail") || r.includes("error")))
+    return "Gemini API failure";
   if (r.includes("no .tex files")) return "Missing LaTeX source files";
   if (r.includes("event loop")) return "Async event loop error";
   if (r.includes("no space left")) return "Disk space exhausted";
-  if (raw === "'metadata'" || r === "'metadata'") return "Missing metadata field";
+  if (raw === "'metadata'" || r === "'metadata'")
+    return "Missing metadata field";
   if (r.includes("job expired")) return "Job timed out / expired";
   if (r.includes("broken pipe")) return "Network connection broken";
   if (r.includes("no audio files")) return "No audio files generated";
@@ -31,10 +42,24 @@ function categorizeError(raw: string): string {
 
 // ── Artifact stage mapping ────────────────────────────────────────────────────
 const ARTIFACT_STAGES: Record<string, string[]> = {
-  video: ["script_generation", "slides_generation", "audio_generation", "video_generation"],
+  video: [
+    "script_generation",
+    "slides_generation",
+    "audio_generation",
+    "video_generation",
+  ],
   poster: ["poster_generation"],
-  reel: ["reel_script_generation", "reel_audio_generation", "reel_video_generation"],
-  podcast: ["podcast_script_generation", "podcast_audio_generation", "podcast_audio_combining", "podcast_generation"],
+  reel: [
+    "reel_script_generation",
+    "reel_audio_generation",
+    "reel_video_generation",
+  ],
+  podcast: [
+    "podcast_script_generation",
+    "podcast_audio_generation",
+    "podcast_audio_combining",
+    "podcast_generation",
+  ],
   business_brief: ["business_brief_generation"],
 };
 
@@ -52,7 +77,8 @@ const ALL_STAGES = Object.values(ARTIFACT_STAGES).flat();
 function tsToISO(ts: unknown): string {
   if (!ts) return new Date(0).toISOString();
   const t = ts as Record<string, number>;
-  if (t._seconds !== undefined) return new Date(t._seconds * 1000).toISOString();
+  if (t._seconds !== undefined)
+    return new Date(t._seconds * 1000).toISOString();
   if (t.seconds !== undefined) return new Date(t.seconds * 1000).toISOString();
   return new Date(String(ts)).toISOString();
 }
@@ -63,6 +89,7 @@ function tsToISO(ts: unknown): string {
 function processPipelineDoc(docId: string, data: Record<string, unknown>) {
   const lastSuccessful = (data.last_successful_stage as string) || "";
   const currentStage = (data.current_stage as string) || "";
+  const rawUserId = data.user_id as string | undefined;
 
   const paper: {
     paper_id: string;
@@ -70,11 +97,13 @@ function processPipelineDoc(docId: string, data: Record<string, unknown>) {
     created_at: string;
     current_stage: string;
     last_successful_stage: string;
-    artifacts: Record<string, { status: string; failed_at_stage?: string; error?: string }>;
+    artifacts: Record<
+      string,
+      { status: string; failed_at_stage?: string; error?: string }
+    >;
     stages: Record<string, { status: string; duration_seconds?: number }>;
   } = {
     paper_id: (data.paper_id as string) || docId,
-    user_id: data.user_id as string | undefined,
     created_at: tsToISO(data.created_at),
     current_stage: currentStage,
     last_successful_stage: lastSuccessful,
@@ -82,21 +111,33 @@ function processPipelineDoc(docId: string, data: Record<string, unknown>) {
     stages: {},
   };
 
+  // Never store undefined in Firestore payloads.
+  if (typeof rawUserId === "string" && rawUserId.length > 0) {
+    paper.user_id = rawUserId;
+  }
+
   // Extract per-stage info from literal dot-key fields
   for (const stageName of ALL_STAGES) {
-    const sd = data[`stages.${stageName}`] as Record<string, unknown> | undefined;
+    const sd = data[`stages.${stageName}`] as
+      | Record<string, unknown>
+      | undefined;
     if (sd) {
-      paper.stages[stageName] = {
+      const stageInfo: { status: string; duration_seconds?: number } = {
         status: (sd.status as string) || "in_progress",
-        duration_seconds: sd.duration_seconds as number | undefined,
       };
+      if (typeof sd.duration_seconds === "number") {
+        stageInfo.duration_seconds = sd.duration_seconds;
+      }
+      paper.stages[stageName] = stageInfo;
     }
   }
 
   // Determine per-artifact outcome
   for (const [artifact, stages] of Object.entries(ARTIFACT_STAGES)) {
     const finalStage = ARTIFACT_FINAL_STAGE[artifact];
-    const finalStageData = data[`stages.${finalStage}`] as Record<string, unknown> | undefined;
+    const finalStageData = data[`stages.${finalStage}`] as
+      | Record<string, unknown>
+      | undefined;
 
     // Primary success: final stage has "completed" status
     if (finalStageData?.status === "completed") {
@@ -117,7 +158,9 @@ function processPipelineDoc(docId: string, data: Record<string, unknown>) {
     const failedStageName = currentStage.endsWith("_failed")
       ? currentStage.replace("_failed", "")
       : "";
-    const isThisArtifactFailed = Boolean(failedStageName && stages.includes(failedStageName));
+    const isThisArtifactFailed = Boolean(
+      failedStageName && stages.includes(failedStageName),
+    );
 
     if (!hasAnyStage && !isThisArtifactFailed) {
       paper.artifacts[artifact] = { status: "not_attempted" };
@@ -130,11 +173,16 @@ function processPipelineDoc(docId: string, data: Record<string, unknown>) {
     let inProgress = false;
 
     for (const stageName of stages) {
-      const sd = data[`stages.${stageName}`] as Record<string, unknown> | undefined;
+      const sd = data[`stages.${stageName}`] as
+        | Record<string, unknown>
+        | undefined;
       if (!sd) continue;
       if (sd.status === "failed") {
         failedStage = stageName;
-        const raw = (sd.error_root_cause as string) || (sd.error as string) || "Unknown error";
+        const raw =
+          (sd.error_root_cause as string) ||
+          (sd.error as string) ||
+          "Unknown error";
         errorReason = categorizeError(raw);
         break;
       }
@@ -144,13 +192,22 @@ function processPipelineDoc(docId: string, data: Record<string, unknown>) {
     // Fallback: current_stage ends with _failed
     if (!failedStage && isThisArtifactFailed) {
       failedStage = failedStageName;
-      const sd = data[`stages.${failedStageName}`] as Record<string, unknown> | undefined;
-      const raw = (sd?.error_root_cause as string) || (sd?.error as string) || "Unknown error";
+      const sd = data[`stages.${failedStageName}`] as
+        | Record<string, unknown>
+        | undefined;
+      const raw =
+        (sd?.error_root_cause as string) ||
+        (sd?.error as string) ||
+        "Unknown error";
       errorReason = categorizeError(raw);
     }
 
     if (failedStage) {
-      paper.artifacts[artifact] = { status: "failed", failed_at_stage: failedStage, error: errorReason };
+      paper.artifacts[artifact] = {
+        status: "failed",
+        failed_at_stage: failedStage,
+        error: errorReason,
+      };
     } else if (inProgress || hasAnyStage) {
       paper.artifacts[artifact] = { status: "in_progress" };
     } else {
@@ -205,12 +262,13 @@ export async function GET(request: NextRequest) {
     // Full fetch from Firestore
     const snapshot = await db.collection("paper_pipeline").get();
     const papers = snapshot.docs.map((doc) =>
-      processPipelineDoc(doc.id, doc.data() as Record<string, unknown>)
+      processPipelineDoc(doc.id, doc.data() as Record<string, unknown>),
     );
 
     // Sort ascending by created_at
     papers.sort(
-      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      (a, b) =>
+        new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
     );
 
     const cachedAt = new Date().toISOString();
@@ -222,7 +280,9 @@ export async function GET(request: NextRequest) {
       const DEL_BATCH = 400;
       for (let i = 0; i < oldChunks.docs.length; i += DEL_BATCH) {
         const batchDel = db.batch();
-        oldChunks.docs.slice(i, i + DEL_BATCH).forEach((d) => batchDel.delete(d.ref));
+        oldChunks.docs
+          .slice(i, i + DEL_BATCH)
+          .forEach((d) => batchDel.delete(d.ref));
         await batchDel.commit();
       }
     }
@@ -230,7 +290,7 @@ export async function GET(request: NextRequest) {
     // Write metadata
     await cacheRef.set(
       { pipeline_total: papers.length, pipeline_cached_at: cachedAt },
-      { merge: true }
+      { merge: true },
     );
 
     // Write chunked cache

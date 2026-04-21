@@ -2248,12 +2248,6 @@ export default function Dashboard() {
                                 color: "var(--error)",
                               },
                               {
-                                label: "Hardest Artifact",
-                                value: ARTIFACT_CONFIG[worstArtifact].label,
-                                icon: AlertCircle,
-                                color: "var(--warning)",
-                              },
-                              {
                                 label: "Top Issue",
                                 value:
                                   topIssue.substring(0, 22) +

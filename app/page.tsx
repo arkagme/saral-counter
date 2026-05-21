@@ -368,45 +368,56 @@ const ARTIFACT_CONFIG: Record<
   video: {
     label: "Video",
     color: "#ffb020",
+    // New Go step names; the API normalises old Python names before sending
     stages: [
-      "script_generation",
-      "slides_generation",
-      "audio_generation",
-      "video_generation",
+      "pdf_extract",
+      "metadata_extract",
+      "script_gen",
+      "beamer_compile",
+      "audio_gen",
+      "ffmpeg_stitch",
     ],
   },
   poster: {
     label: "Poster",
     color: "#14b8a6",
-    stages: ["poster_generation"],
+    stages: ["poster_compile"],
   },
   reel: {
     label: "Reel",
     color: "#a855f7",
-    stages: [
-      "reel_script_generation",
-      "reel_audio_generation",
-      "reel_video_generation",
-    ],
+    stages: ["reel_script_gen", "reel_audio_gen", "reel_video_gen"],
   },
   podcast: {
     label: "Podcast",
     color: "#ec4899",
-    stages: [
-      "podcast_script_generation",
-      "podcast_audio_generation",
-      "podcast_audio_combining",
-      "podcast_generation",
-    ],
+    stages: ["podcast_script_gen", "podcast_audio_gen"],
   },
   business_brief: {
     label: "Brief",
     color: "#22d3ee",
-    stages: ["business_brief_generation"],
+    stages: ["business_brief"],
   },
 };
 
 const STAGE_LABELS: Record<string, string> = {
+  // New Go step names
+  pdf_extract: "PDF Extract",
+  metadata_extract: "Metadata",
+  script_gen: "Script Gen",
+  beamer_compile: "Slides",
+  audio_gen: "Audio",
+  ffmpeg_stitch: "Video Render",
+  poster_compile: "Poster",
+  reel_script_gen: "Script",
+  reel_audio_gen: "Audio",
+  reel_video_gen: "Video",
+  podcast_script_gen: "Script",
+  podcast_audio_gen: "Audio",
+  business_brief: "Brief",
+  linkedin_draft: "LinkedIn",
+  twitter_draft: "Twitter",
+  // Legacy Python names (shown if old-format doc slips through)
   script_generation: "Script Gen",
   slides_generation: "Slides",
   audio_generation: "Audio",
@@ -419,7 +430,7 @@ const STAGE_LABELS: Record<string, string> = {
   podcast_audio_generation: "Audio Gen",
   podcast_audio_combining: "Combine",
   podcast_generation: "Generate",
-  business_brief_generation: "Generate",
+  business_brief_generation: "Brief",
 };
 
 export default function Dashboard() {

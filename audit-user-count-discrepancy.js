@@ -192,7 +192,7 @@ async function auditPlatformStats() {
   separator("3. PLATFORM STATS API — External Saral Backend");
 
   const PLATFORM_STATS_URL =
-    "https://testload.democratiseresearch.in/api/api/analytics/platform/stats";
+    "https://overhaulapi.democratiseresearch.in/api/api/analytics/platform/stats";
   const SERVICE_UID = "saral-analytics-service";
   const apiKey = process.env.FIREBASE_API_KEY;
 

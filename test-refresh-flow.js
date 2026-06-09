@@ -87,7 +87,7 @@ async function main() {
   const idToken = tokenData.idToken;
 
   const apiResp = await fetch(
-    `https://testload.democratiseresearch.in/api/api/analytics/user/${TEST_UID}/dashboard`,
+    `https://overhaulapi.democratiseresearch.in/api/api/analytics/user/${TEST_UID}/dashboard`,
     {
       headers: {
         Authorization: `Bearer ${idToken}`,
@@ -113,7 +113,7 @@ async function main() {
   const apiData2 = apiResp.ok
     ? await (
         await fetch(
-          `https://testload.democratiseresearch.in/api/api/analytics/user/${TEST_UID}/dashboard`,
+          `https://overhaulapi.democratiseresearch.in/api/api/analytics/user/${TEST_UID}/dashboard`,
           {
             headers: {
               Authorization: `Bearer ${idToken}`,

@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
 
   // 3. Re-fetch the user's dashboard from the external API
   try {
-    let dashboardData = {
+    let dashboardData: Record<string, unknown> = {
       total_papers: 0,
       papers_by_source: {},
       total_outputs: {},
@@ -89,7 +89,17 @@ export async function POST(request: NextRequest) {
       );
 
       if (response.ok) {
-        dashboardData = await response.json();
+        const raw = await response.json();
+        dashboardData = (raw.data ?? raw) as Record<string, unknown>;
+        if (dashboardData.total_outputs) {
+          const outputs = dashboardData.total_outputs as Record<string, number>;
+          dashboardData.total_outputs = {
+            video: outputs.videos ?? outputs.video ?? 0,
+            reel: outputs.reels ?? outputs.reel ?? 0,
+            podcast: outputs.podcasts ?? outputs.podcast ?? 0,
+            poster: outputs.posters ?? outputs.poster ?? 0,
+          };
+        }
       } else {
         const errorText = await response.text();
         console.warn(

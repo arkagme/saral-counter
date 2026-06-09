@@ -45,7 +45,16 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const data = await response.json();
+    const raw = await response.json();
+    const data = raw.data ?? raw;
+    if (data.total_outputs) {
+      data.total_outputs = {
+        video: data.total_outputs.videos ?? data.total_outputs.video ?? 0,
+        reel: data.total_outputs.reels ?? data.total_outputs.reel ?? 0,
+        podcast: data.total_outputs.podcasts ?? data.total_outputs.podcast ?? 0,
+        poster: data.total_outputs.posters ?? data.total_outputs.poster ?? 0,
+      };
+    }
 
     // Update cache in Firestore
     try {

@@ -230,7 +230,16 @@ export async function POST() {
         // Prefer Firebase Auth email (authoritative) over paper_metadata-derived email
         const resolvedEmail = authEmailMap[item.userId] || item.email;
         if (resp.ok) {
-          const apiData = await resp.json();
+          const raw = await resp.json();
+          const apiData = raw.data ?? raw;
+          if (apiData.total_outputs) {
+            apiData.total_outputs = {
+              video: apiData.total_outputs.videos ?? apiData.total_outputs.video ?? 0,
+              reel: apiData.total_outputs.reels ?? apiData.total_outputs.reel ?? 0,
+              podcast: apiData.total_outputs.podcasts ?? apiData.total_outputs.podcast ?? 0,
+              poster: apiData.total_outputs.posters ?? apiData.total_outputs.poster ?? 0,
+            };
+          }
           freshEntry = {
             user_id: item.userId,
             email: resolvedEmail,

@@ -59,13 +59,23 @@ async function fetchUserDashboard(
       };
     }
 
-    const data = await response.json();
+    const raw = await response.json();
+    const data = raw.data ?? raw;
+    const outputs = data.total_outputs as Record<string, number> | undefined;
+    const total_outputs: Record<string, number> = outputs
+      ? {
+          video: outputs.videos ?? outputs.video ?? 0,
+          reel: outputs.reels ?? outputs.reel ?? 0,
+          podcast: outputs.podcasts ?? outputs.podcast ?? 0,
+          poster: outputs.posters ?? outputs.poster ?? 0,
+        }
+      : {};
     return {
       user_id: userId,
       email,
       total_papers: data.total_papers || 0,
       papers_by_source: data.papers_by_source || {},
-      total_outputs: data.total_outputs || {},
+      total_outputs,
       papers: data.papers || [],
       fetched_at: new Date().toISOString(),
     };

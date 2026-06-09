@@ -39,11 +39,20 @@ export async function GET() {
       );
     }
 
-    const data = await response.json();
-    // Adjust users count by -1 (hardcoded correction)
-    if (data.users !== undefined) {
-      data.users = data.users;
-    }
+    const raw = await response.json();
+    const ps = raw.data?.platform_stats ?? raw.platform_stats ?? {};
+
+    const data = {
+      users: ps.total_users ?? 0,
+      logins: ps.total_logins ?? 0,
+      papers: ps.total_papers ?? 0,
+      videos: ps.total_videos ?? 0,
+      reels: ps.total_reels ?? 0,
+      podcasts: ps.total_podcasts ?? 0,
+      posters: ps.total_posters ?? 0,
+      business_briefs: ps.total_business_briefs ?? 0,
+    };
+
     return NextResponse.json(data);
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {

@@ -5,7 +5,7 @@ import { getFirebaseIdTokenForUser } from "@/lib/firebase-token";
 export const maxDuration = 300; // 5 minutes for bulk fetch
 
 const USER_DASHBOARD_URL =
-  "https://overhaulapi.democratiseresearch.in/api/api/analytics/user";
+  "https://overhaulapi.democratiseresearch.in/api/analytics/user";
 
 const FIRESTORE_COLLECTION = "analytics_cache";
 const FIRESTORE_DOC = "user_dashboards";

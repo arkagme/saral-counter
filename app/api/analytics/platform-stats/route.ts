@@ -5,7 +5,7 @@ export const maxDuration = 30;
 const PLATFORM_STATS_TIMEOUT_MS = 12000;
 
 const PLATFORM_STATS_URL =
-  "https://overhaulapi.democratiseresearch.in/api/api/analytics/platform/stats";
+  "https://overhaulapi.democratiseresearch.in/api/analytics/platform/stats";
 
 export async function GET() {
   try {

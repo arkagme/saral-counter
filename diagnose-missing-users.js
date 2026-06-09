@@ -138,7 +138,7 @@ async function main() {
 
     try {
       const token = await getIdTokenForUser(user.uid);
-      const url = `https://overhaulapi.democratiseresearch.in/api/api/analytics/user/${user.uid}/dashboard`;
+      const url = `https://overhaulapi.democratiseresearch.in/api/analytics/user/${user.uid}/dashboard`;
       const resp = await fetch(url, {
         headers: {
           Authorization: `Bearer ${token}`,

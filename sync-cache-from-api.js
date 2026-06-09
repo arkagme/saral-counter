@@ -45,7 +45,7 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 const FIREBASE_API_KEY = process.env.FIREBASE_API_KEY;
-const USER_DASHBOARD_URL = "https://overhaulapi.democratiseresearch.in/api/api/analytics/user";
+const USER_DASHBOARD_URL = "https://overhaulapi.democratiseresearch.in/api/analytics/user";
 
 async function getIdTokenForUser(uid) {
   const customToken = await admin.auth().createCustomToken(uid);

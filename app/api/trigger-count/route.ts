@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import admin from "firebase-admin";
+import { readHistory, writeHistory } from "@/lib/storage";
 
 // Set maximum execution time (60s for Pro, 10s for Hobby)
 export const maxDuration = 60;
@@ -101,7 +102,6 @@ export async function GET(request: Request) {
       hasFirebaseProject: !!process.env.FIREBASE_PROJECT_ID,
       hasFirebaseEmail: !!process.env.FIREBASE_CLIENT_EMAIL,
       hasFirebaseKey: !!process.env.FIREBASE_PRIVATE_KEY,
-      hasBlobToken: !!process.env.BLOB_READ_WRITE_TOKEN,
       hasCronSecret: !!process.env.CRON_SECRET,
     };
 
@@ -115,16 +115,6 @@ export async function GET(request: Request) {
       return NextResponse.json(
         {
           error: "Firebase credentials missing",
-          envCheck,
-        },
-        { status: 500 },
-      );
-    }
-
-    if (!envCheck.hasBlobToken) {
-      return NextResponse.json(
-        {
-          error: "BLOB_READ_WRITE_TOKEN missing - enable Vercel Blob Storage",
           envCheck,
         },
         { status: 500 },
@@ -146,19 +136,14 @@ export async function GET(request: Request) {
     console.log(`User count: ${count}, took ${Date.now() - startTime}ms`);
     const today = new Date().toISOString().split("T")[0];
 
-    // Get historical data from Vercel Blob
+    // Get historical data from local file
     let history: Array<{ date: string; count: number }> = [];
     let blobExists = false;
 
     try {
-      console.log("Fetching blob history...");
-      const { head } = await import("@vercel/blob");
-      const blob = await head("user-history.json");
-      console.log("Blob found:", blob.url);
-      const response = await fetch(blob.url);
-      const data = await response.json();
-      history = data.history || [];
-      blobExists = true;
+      console.log("Loading history...");
+      history = await readHistory();
+      blobExists = history.length > 0;
       console.log(`History loaded: ${history.length} entries`);
     } catch (error) {
       console.log(
@@ -178,19 +163,10 @@ export async function GET(request: Request) {
       newEntry,
     ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-    // Save to Vercel Blob
-    console.log("Saving to blob...");
-    const { put } = await import("@vercel/blob");
-    const result = await put(
-      "user-history.json",
-      JSON.stringify({ history: updatedHistory }),
-      {
-        access: "public",
-        addRandomSuffix: false,
-        allowOverwrite: true,
-      },
-    );
-    console.log("Blob saved:", result.url);
+    // Save to local file
+    console.log("Saving history...");
+    const filePath = await writeHistory(updatedHistory);
+    console.log("History saved:", filePath);
 
     // Send Slack notification
     console.log("Sending Slack notification...");
@@ -204,7 +180,7 @@ export async function GET(request: Request) {
       count,
       change: count - previousCount,
       date: today,
-      blobUrl: result.url,
+      filePath,
       blobExists,
       historyLength: updatedHistory.length,
       executionTime: `${totalTime}ms`,

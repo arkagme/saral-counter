@@ -1,24 +1,22 @@
 import { NextResponse } from "next/server";
+import { readHistory } from "@/lib/storage";
 
 export async function GET() {
   try {
-    const { head } = await import("@vercel/blob");
-    const blob = await head("user-history.json");
+    const history = await readHistory();
 
-    const response = await fetch(blob.url, {
-      cache: "no-cache",
-    });
-    const data = await response.json();
-
-    return NextResponse.json(data, {
-      headers: {
-        "Cache-Control": "no-cache, no-store, must-revalidate",
-        Pragma: "no-cache",
-        Expires: "0",
+    return NextResponse.json(
+      { history },
+      {
+        headers: {
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          Pragma: "no-cache",
+          Expires: "0",
+        },
       },
-    });
+    );
   } catch (error) {
-    console.error("Error fetching blob data:", error);
+    console.error("Error fetching history data:", error);
     return NextResponse.json(
       {
         history: [],

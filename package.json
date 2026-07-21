@@ -9,7 +9,6 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@vercel/blob": "^2.0.0",
     "clsx": "^2.1.1",
     "firebase-admin": "^13.6.0",
     "fuse.js": "^7.1.0",

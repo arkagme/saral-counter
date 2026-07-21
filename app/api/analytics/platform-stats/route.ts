@@ -1,13 +1,22 @@
 import { NextResponse } from "next/server";
 import { getFirebaseIdToken } from "@/lib/firebase-token";
 
-export const maxDuration = 30;
-const PLATFORM_STATS_TIMEOUT_MS = 12000;
+export const maxDuration = 45;
+const PLATFORM_STATS_TIMEOUT_MS = 20000;
 
 const PLATFORM_STATS_URL =
   "https://overhaulapi.democratiseresearch.in/api/analytics/platform/stats";
 
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+let cachedData: { data: Record<string, number>; timestamp: number } | null =
+  null;
+
 export async function GET() {
+  // Return cached data if fresh
+  if (cachedData && Date.now() - cachedData.timestamp < CACHE_TTL_MS) {
+    return NextResponse.json(cachedData.data);
+  }
+
   try {
     const token = await getFirebaseIdToken();
     const controller = new AbortController();
@@ -53,9 +62,14 @@ export async function GET() {
       business_briefs: ps.total_business_briefs ?? 0,
     };
 
+    cachedData = { data, timestamp: Date.now() };
     return NextResponse.json(data);
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
+      // Serve stale cache if upstream times out
+      if (cachedData) {
+        return NextResponse.json(cachedData.data);
+      }
       return NextResponse.json(
         { error: "Platform stats upstream timeout" },
         { status: 504 },

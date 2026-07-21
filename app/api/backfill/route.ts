@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import admin from "firebase-admin";
+import { readHistory, writeHistory } from "@/lib/storage";
 
 // Set maximum execution time
 export const maxDuration = 60;
@@ -95,14 +96,10 @@ export async function GET(request: Request) {
     const historicalData = buildCumulativeHistory(usersByDate);
     console.log(`Historical data points: ${historicalData.length}`);
 
-    // Step 3: Get existing blob data (if any)
+    // Step 3: Get existing history from local file
     let existingHistory: Array<{ date: string; count: number }> = [];
     try {
-      const { head } = await import("@vercel/blob");
-      const blob = await head("user-history.json");
-      const response = await fetch(blob.url);
-      const data = await response.json();
-      existingHistory = data.history || [];
+      existingHistory = await readHistory();
       console.log(`Existing history entries: ${existingHistory.length}`);
     } catch {
       console.log("No existing history found");
@@ -129,19 +126,10 @@ export async function GET(request: Request) {
 
     console.log(`Final merged history: ${finalHistory.length} entries`);
 
-    // Step 5: Save to Vercel Blob
-    console.log("Saving to blob...");
-    const { put } = await import("@vercel/blob");
-    const result = await put(
-      "user-history.json",
-      JSON.stringify({ history: finalHistory }),
-      {
-        access: "public",
-        addRandomSuffix: false,
-        allowOverwrite: true,
-      },
-    );
-    console.log("Blob saved:", result.url);
+    // Step 5: Save to local file
+    console.log("Saving to file...");
+    const filePath = await writeHistory(finalHistory);
+    console.log("File saved:", filePath);
 
     const totalTime = Date.now() - startTime;
 
@@ -156,7 +144,7 @@ export async function GET(request: Request) {
         lastDate: finalHistory[finalHistory.length - 1]?.date,
         totalUsers: finalHistory[finalHistory.length - 1]?.count,
       },
-      blobUrl: result.url,
+      filePath,
       executionTime: `${totalTime}ms`,
     });
   } catch (error) {

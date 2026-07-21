@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import admin from "firebase-admin";
+import { readHistory, writeHistory } from "@/lib/storage";
 
-// Set maximum execution time (60s for Pro, 10s for Hobby)
+// Set maximum execution time
 export const maxDuration = 60;
 
 // Initialize Firebase Admin
@@ -83,14 +84,10 @@ export async function GET(request: Request) {
     const count = await getUserCount();
     const today = new Date().toISOString().split("T")[0];
 
-    // Get historical data from Vercel Blob
+    // Get historical data from local file
     let history: Array<{ date: string; count: number }> = [];
     try {
-      const { head } = await import("@vercel/blob");
-      const blob = await head("user-history.json");
-      const response = await fetch(blob.url);
-      const data = await response.json();
-      history = data.history || [];
+      history = await readHistory();
     } catch {
       console.log("No history found, starting fresh");
     }
@@ -106,17 +103,7 @@ export async function GET(request: Request) {
       newEntry,
     ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-    // Save to Vercel Blob
-    const { put } = await import("@vercel/blob");
-    await put(
-      "user-history.json",
-      JSON.stringify({ history: updatedHistory }),
-      {
-        access: "public",
-        addRandomSuffix: false,
-        allowOverwrite: true,
-      },
-    );
+    await writeHistory(updatedHistory);
 
     // Send Slack notification
     await sendSlackNotification(count, previousCount);
